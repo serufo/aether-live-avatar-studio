@@ -34,6 +34,8 @@ jobs:
         run: npm install
 
       - name: Build production bundle
+        env:
+          VITE_GEMINI_KEY_VAULT: ${{ secrets.VITE_GEMINI_KEY_VAULT }}
         run: npm run build
 
       - name: Setup Pages

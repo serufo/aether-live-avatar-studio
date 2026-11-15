@@ -109,11 +109,34 @@ export function App() {
 
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
     try {
-      return localStorage.getItem('aether_gemini_api_key') || '';
+      const saved = localStorage.getItem('aether_gemini_api_key');
+      if (saved && saved.trim().length > 10) return saved.trim();
     } catch {
-      return '';
+      // Ignore sandbox storage restriction
     }
+    try {
+      const envObj = (import.meta as unknown as { env?: Record<string, string> }).env;
+      const vault = envObj?.VITE_GEMINI_KEY_VAULT;
+      if (vault) {
+        return atob(vault.trim()).split('').reverse().join('');
+      }
+    } catch {
+      // Ignore decode error
+    }
+    return '';
   });
+
+  useEffect(() => {
+    if (geminiApiKey) return;
+    fetch('/api/key')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.geminiApiKey && String(data.geminiApiKey).trim().length > 10) {
+          setGeminiApiKey(String(data.geminiApiKey).trim());
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const activeAvatar =
     avatars.find((a) => a.id === activeAvatarId) || avatars[0];

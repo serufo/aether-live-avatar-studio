@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const STORE_PATH = path.join(DATA_DIR, 'store.json');
+const SECRETS_PATH = path.join(DATA_DIR, 'secrets.json');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -23,6 +24,33 @@ app.get('/api/health', (_req, res) => {
     service: 'aether-live-avatar-backend',
     timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/api/key', (_req, res) => {
+  try {
+    if (fs.existsSync(SECRETS_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(SECRETS_PATH, 'utf-8'));
+      res.json({ geminiApiKey: raw.geminiApiKey || '' });
+      return;
+    }
+    res.json({ geminiApiKey: process.env.GEMINI_API_KEY || '' });
+  } catch {
+    res.json({ geminiApiKey: '' });
+  }
+});
+
+app.post('/api/key', (req, res) => {
+  try {
+    const geminiApiKey = String(req.body?.geminiApiKey || '').trim();
+    fs.writeFileSync(
+      SECRETS_PATH,
+      JSON.stringify({ geminiApiKey, updatedAt: new Date().toISOString() }, null, 2),
+      { encoding: 'utf-8', mode: 0o600 }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 app.get('/api/state', (_req, res) => {

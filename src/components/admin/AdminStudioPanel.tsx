@@ -1757,7 +1757,25 @@ export const AdminStudioPanel: React.FC<Props> = ({
               </div>
 
               <label className="field-label">
-                Chave da API Google Gemini (<code>GEMINI_API_KEY</code>)
+                <span className="section-row-between">
+                  <span>
+                    Chave da API Google Gemini (<code>GEMINI_API_KEY</code>)
+                  </span>
+                  {geminiApiKey && geminiApiKey.trim().length > 10 && (
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        color: '#10b981',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <CheckCircle2 size={12} /> Cofre Ativo (•••{geminiApiKey.trim().slice(-4)})
+                    </span>
+                  )}
+                </span>
                 <input
                   type="password"
                   id="input-gemini-api-key"
