@@ -43,6 +43,8 @@ import {
   Settings,
   Play,
   Activity,
+  MessageSquare,
+  X,
 } from 'lucide-react';
 
 type ScreenMode = 'live_stage' | 'admin_config';
@@ -143,6 +145,8 @@ export function App() {
 
   // Separação clara entre Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
   const [screenMode, setScreenMode] = useState<ScreenMode>('live_stage');
+  const [showTranscript, setShowTranscript] = useState<boolean>(false);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   // Estado Conversacional & Expressões do Avatar em Tempo Real
   const [emotion, setEmotion] = useState<EmotionState>('neutral');
@@ -229,6 +233,12 @@ export function App() {
       body: JSON.stringify(payload),
     }).catch(() => {});
   }, [avatars, activeAvatarId, documents, auditEvents]);
+
+  useEffect(() => {
+    if (showTranscript) {
+      transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [turns, showTranscript]);
 
   // Atualiza conexão Gemini Live quando chave ou avatar mudam
   useEffect(() => {
@@ -728,6 +738,119 @@ export function App() {
             </div>
           )}
 
+          {/* Painel Flutuante de Texto das Conversas (quando ativado pelo botão na barra) */}
+          {showTranscript && (
+            <div
+              id="stage-transcript-panel"
+              style={{
+                position: 'absolute',
+                bottom: '76px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(680px, calc(100% - 32px))',
+                maxHeight: '42dvh',
+                zIndex: 18,
+                background: 'rgba(11, 15, 25, 0.88)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 16px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#94a3b8',
+                }}
+              >
+                <span>HISTÓRICO DA CONVERSA ({turns.length})</span>
+                <button
+                  type="button"
+                  onClick={() => setShowTranscript(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '2px',
+                  }}
+                  title="Fechar histórico de texto"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div
+                style={{
+                  padding: '12px 16px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}
+              >
+                {turns.map((turn) => (
+                  <div
+                    key={turn.id}
+                    style={{
+                      alignSelf: turn.speaker === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%',
+                      padding: '8px 13px',
+                      borderRadius:
+                        turn.speaker === 'user'
+                          ? '14px 14px 4px 14px'
+                          : '14px 14px 14px 4px',
+                      background:
+                        turn.speaker === 'user'
+                          ? 'rgba(0, 240, 255, 0.14)'
+                          : turn.emotion === 'alert'
+                          ? 'rgba(255, 59, 92, 0.18)'
+                          : 'rgba(255, 255, 255, 0.06)',
+                      border:
+                        turn.speaker === 'user'
+                          ? '1px solid rgba(0, 240, 255, 0.32)'
+                          : turn.emotion === 'alert'
+                          ? '1px solid rgba(255, 59, 92, 0.4)'
+                          : '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f8fafc',
+                      fontSize: '0.83rem',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        marginBottom: '3px',
+                        color:
+                          turn.speaker === 'user'
+                            ? '#00f0ff'
+                            : turn.emotion === 'alert'
+                            ? '#ff3b5c'
+                            : '#10b981',
+                      }}
+                    >
+                      {turn.speaker === 'user' ? 'Você' : activeAvatar.name}{' '}
+                      <span style={{ opacity: 0.6, fontWeight: 400 }}>{turn.timestamp}</span>
+                    </div>
+                    <div>{turn.text}</div>
+                  </div>
+                ))}
+                <div ref={transcriptEndRef} />
+              </div>
+            </div>
+          )}
+
           {/* Apenas a Barra Inferior Fluida de Interação */}
           <div className="stage-bottom-hud-dock clean-dock">
             <div className="hud-controls-cluster">
@@ -818,6 +941,20 @@ export function App() {
                 <span>Enviar</span>
               </button>
             </form>
+
+            <button
+              type="button"
+              id="btn-toggle-transcript"
+              className={`hud-round-btn ${showTranscript ? 'cam-active' : ''}`}
+              onClick={() => setShowTranscript((prev) => !prev)}
+              title={
+                showTranscript
+                  ? 'Ocultar Texto das Conversas'
+                  : 'Mostrar Texto das Conversas'
+              }
+            >
+              <MessageSquare size={18} />
+            </button>
 
             <button
               type="button"
