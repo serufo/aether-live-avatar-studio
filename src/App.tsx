@@ -113,7 +113,11 @@ export function App() {
   });
 
   const [geminiApiKey, setGeminiApiKey] = useState<string>(() => {
-    return localStorage.getItem('aether_gemini_api_key') || '';
+    try {
+      return localStorage.getItem('aether_gemini_api_key') || '';
+    } catch {
+      return '';
+    }
   });
 
   const activeAvatar =
@@ -212,7 +216,11 @@ export function App() {
 
   // Atualiza conexão Gemini Live quando chave ou avatar mudam
   useEffect(() => {
-    localStorage.setItem('aether_gemini_api_key', geminiApiKey);
+    try {
+      localStorage.setItem('aether_gemini_api_key', geminiApiKey);
+    } catch {
+      // Ignore sandbox storage restrictions
+    }
     const manager = geminiManagerRef.current;
     const audio = audioEngineRef.current;
     if (!manager || !audio) return;

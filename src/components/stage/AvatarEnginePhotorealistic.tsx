@@ -41,17 +41,23 @@ export const AvatarEnginePhotorealistic: React.FC<Props> = ({
     );
     camera.position.set(0, 0, 4.15);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
-    });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+      renderer.setSize(container.clientWidth || 640, container.clientHeight || 480);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      container.innerHTML = '';
+      container.appendChild(renderer.domElement);
+    } catch {
+      container.innerHTML = `<img src="${avatar.visualPhoto.portraitUrl || 'avatars/helena.jpg'}" style="max-height:85%;border-radius:16px;object-fit:contain;" alt="${avatar.name}" />`;
+      return;
+    }
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.85);
     scene.add(ambientLight);
