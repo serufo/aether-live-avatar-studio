@@ -33,3 +33,6 @@ upload
 *.njsproj
 *.sln
 *.sw?
+
+# Cloned repo dir
+serufo/
