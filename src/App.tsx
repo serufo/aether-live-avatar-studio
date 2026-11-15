@@ -47,7 +47,7 @@ import {
 
 type ScreenMode = 'live_stage' | 'admin_config';
 
-const STORAGE_KEY = 'aether_live_studio_state_v2';
+const STORAGE_KEY = 'aether_live_studio_state_v3';
 
 export function App() {
   // Estado Principal Persistente

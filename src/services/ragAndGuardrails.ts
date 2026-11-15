@@ -180,49 +180,47 @@ export function compileSystemInstruction(
 
   const formalityDesc =
     g.formalityLevel >= 75
-      ? 'altamente executivo, formal e institucional'
+      ? 'executivo, claro e seguro'
       : g.formalityLevel >= 45
-      ? 'profissional, equilibrado e acessível'
+      ? 'profissional, acessível e natural'
       : 'casual, dinâmico e direto';
 
   const empathyDesc =
     g.empathyLevel >= 75
-      ? 'muito acolhedor, empático e atencioso'
-      : 'objetivo, analítico e neutro';
+      ? 'acolhedor, empático e atencioso'
+      : 'objetivo e direto';
+
+  const maxSentences = Math.max(1, Math.min(g.maxResponseSentences || 2, 3));
 
   const directContextBlock =
     directDocs.length > 0
-      ? `\n\n=== DOCUMENTOS DE CONTEXTO DIRETO (MEMÓRIA CORE) ===\n` +
-        directDocs.map((d) => `[Fonte: ${d.title}]\n${d.content}`).join('\n\n')
+      ? `\n\n=== CONHECIMENTO INTERNO DA SUA PERSONA ===\n` +
+        directDocs.map((d) => d.content).join('\n\n')
       : '';
 
   const ragCatalogBlock =
     ragDocs.length > 0
-      ? `\n\n=== BASE DE CONHECIMENTO INDEXADA (RAG ATIVO) ===\n` +
-        ragDocs.map((d) => `- ${d.title} (${d.fileName})`).join('\n')
+      ? `\n\n=== FATOS E DIRETRIZES DO SEU DOMÍNIO ===\n` +
+        ragDocs.map((d) => d.content).join('\n\n')
       : '';
 
   return [
-    `=== HARNESS DE IDENTIDADE E SISTEMA (AETHER LIVE) ===`,
-    `Nome do Avatar: ${avatar.name}`,
-    `Cargo/Papel: ${avatar.roleTitle}`,
-    `Modo Visual Ativo: ${avatar.visualMode.toUpperCase()}`,
-    `Instrução Principal: ${g.systemRolePrompt}`,
+    `Você é ${avatar.name}, ${avatar.roleTitle}.`,
+    `${g.systemRolePrompt}`,
     ``,
-    `=== PARÂMETROS DE COMPORTAMENTO E TOM ===`,
-    `- Idioma Obrigatório: ${g.responseLanguage}`,
-    `- Registro de Formalidade (${g.formalityLevel}%): ${formalityDesc}`,
-    `- Calibragem de Empatia (${g.empathyLevel}%): ${empathyDesc}`,
-    `- Concisão para Voz em Tempo Real: Responda em no máximo ${g.maxResponseSentences} frases claras por turno para manter fluidez conversacional.`,
-    ``,
-    `=== GUARDRAILS PREVENTIVOS (NÍVEL 1) ===`,
-    `- Restrição Estrita à Base de Conhecimento (Strict Grounding): ${
+    `=== REGRAS OBRIGATÓRIAS DE FALA NATURAL E OBJETIVIDADE ===`,
+    `- Idioma: ${g.responseLanguage}. Tom: ${formalityDesc}, ${empathyDesc}.`,
+    `- SEJA CURTO E DIRETO: Responda em no máximo ${maxSentences} frases curtas (idealmente de 15 a 35 palavras no total). Vá direto ao ponto.`,
+    `- PROIBIDO CITAR FONTES: JAMAIS diga "Com base no documento...", "Segundo a base de conhecimento...", "De acordo com o manual/protocolo..." ou mencione nomes de arquivos. Fale com naturalidade, como conhecimento próprio.`,
+    `- TEXTO PURO PARA VOZ: Não use listas, tópicos, asteriscos ou markdown. Escreva exatamente como uma pessoa real falaria em voz alta.`,
+    `- Escopo: ${
       g.strictKnowledgeGrounding
-        ? 'ATIVADO — Responda APENAS com fatos presentes nos documentos anexados. Se não constar nos documentos, informe educadamente.'
-        : 'FLEXÍVEL — Priorize os documentos anexados e complemente com conhecimento técnico do seu domínio.'
+        ? 'Responda apenas sobre fatos presentes no seu conhecimento interno. Se algo fugir do escopo, diga de forma curta e educada que atua apenas em ' +
+          g.allowedTopics.slice(0, 2).join(' e ') +
+          '.'
+        : 'Priorize os fatos e métricas do seu conhecimento interno com naturalidade.'
     }`,
-    `- Tópicos Permitidos: ${g.allowedTopics.join(', ') || 'Geral dentro do papel'}`,
-    `- Tópicos Proibidos (NUNCA aborde ou forneça instruções): ${g.blockedTopics.join(', ') || 'Nenhum'}`,
+    `- Tópicos Proibidos (NUNCA aborde): ${g.blockedTopics.join(', ') || 'Nenhum'}`,
     directContextBlock,
     ragCatalogBlock,
   ]
@@ -504,7 +502,95 @@ export function inferEmotionAndGesture(
   return { emotion: 'happy', gesture: 'explain' };
 }
 
-// Sintetizador Neural Local / RAG Inteligente para resposta imediata (ou enriquecimento do Gemini Live)
+/**
+ * Limpa marcações Markdown, remove citações artificiais de fonte ("Com base no documento...",
+ * "Segundo a base de conhecimento...") e limita a resposta a frases curtas e naturais para fala.
+ */
+export function formatNaturalSpokenReply(rawText: string, maxSentences = 2): string {
+  const cleaned = rawText
+    .replace(/^#+\s+.*$/gm, '')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/^\s*[-*•]\s+/gm, '')
+    .replace(
+      /^(?:com base n[oa]s?\s+(?:documento|manual|protocolo|pol[íi]tica|playbook|base de conhecimento)[^:.,]*[:.,]\s*)/i,
+      ''
+    )
+    .replace(
+      /^(?:segundo\s+[oa]\s+(?:documento|manual|protocolo|pol[íi]tica|playbook|base de conhecimento)[^:.,]*[:.,]\s*)/i,
+      ''
+    )
+    .replace(
+      /^(?:de acordo com\s+[oa]\s+(?:documento|manual|protocolo|pol[íi]tica|playbook|base de conhecimento)[^:.,]*[:.,]\s*)/i,
+      ''
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return '';
+
+  const sentences =
+    cleaned
+      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+      ?.map((s) => s.trim())
+      .filter((s) => s.length > 0) || [cleaned];
+
+  const limit = Math.max(1, Math.min(maxSentences, 3));
+  return sentences.slice(0, limit).join(' ').trim();
+}
+
+// Extrai apenas as 1 ou 2 frases mais relevantes de um trecho de conhecimento para responder diretamente à pergunta
+function extractConciseFactFromChunk(chunkText: string, query: string, maxSentences = 2): string {
+  const qTerms = extractTerms(query);
+  const lines = chunkText
+    .replace(/^#+\s+.*$/gm, '')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/^\s*[-*•]\s+/gm, '')
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  const allSentences: string[] = [];
+  for (const line of lines) {
+    const parts = line.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [line];
+    for (const p of parts) {
+      const trimmed = p.trim();
+      if (trimmed.length > 8) {
+        allSentences.push(trimmed);
+      }
+    }
+  }
+
+  if (allSentences.length === 0) {
+    return formatNaturalSpokenReply(chunkText, maxSentences);
+  }
+
+  const scored = allSentences.map((sentence, idx) => {
+    const sNorm = normalizeText(sentence);
+    let score = 0;
+    for (const term of qTerms) {
+      if (sNorm.includes(term)) score += 2;
+    }
+    if (/\d+%|\d+\s*(?:ms|minutos|anos|khz)/i.test(sentence)) {
+      score += 0.8;
+    }
+    return { sentence, score, idx };
+  });
+
+  scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
+  const limit = Math.max(1, Math.min(maxSentences, 2));
+  const chosen = scored
+    .slice(0, limit)
+    .sort((a, b) => a.idx - b.idx)
+    .map((item) =>
+      /[.!?]$/.test(item.sentence) ? item.sentence : `${item.sentence}.`
+    );
+
+  return formatNaturalSpokenReply(chosen.join(' '), limit);
+}
+
+// Sintetizador Neural Local / RAG Inteligente para resposta imediata e natural
 export function synthesizeGroundedResponse(
   userText: string,
   avatar: AvatarProfile,
@@ -533,49 +619,36 @@ export function synthesizeGroundedResponse(
   }
 
   const cleanQuery = inputCheck.sanitizedText;
+  const maxSent = Math.max(1, Math.min(avatar.guardrails.maxResponseSentences || 2, 2));
   const citations = searchKnowledgeBase(cleanQuery, avatar.id, documents, 2);
-  const directDocs = documents.filter(
-    (d) => d.avatarId === avatar.id && d.injectionMode === 'direct_context'
-  );
 
   let prefixPII = '';
   if (inputCheck.action === 'masked_pii') {
-    prefixPII =
-      'Notei dados pessoais sensíveis na sua mensagem e nosso Guardrail Nível 2 realizou a anonimização automática em tempo real. ';
+    prefixPII = 'Por segurança, ocultei seus dados pessoais sensíveis. ';
   }
 
   let visionNote = '';
   if (hasActiveCamera && /camera|câmera|vendo|olhe|rosto|mim/i.test(cleanQuery)) {
-    visionNote =
-      'Estou recebendo seu stream de vídeo da webcam em tempo real pela sessão multimodal e consigo ver você nitidamente no palco. ';
+    visionNote = 'Estou vendo você pela câmera agora. ';
   } else if (hasActiveScreen && /tela|screen|gráfico|código|slide/i.test(cleanQuery)) {
-    visionNote =
-      'Estou analisando os frames do seu compartilhamento de tela em tempo real via Gemini Live. ';
+    visionNote = 'Estou acompanhando a sua tela compartilhada. ';
   }
 
   let coreAnswer = '';
 
   if (citations.length > 0) {
-    const top = citations[0];
-    const cleanExcerpt = top.excerpt
-      .replace(/^#+\s+/gm, '')
-      .replace(/\*\*/g, '')
-      .replace(/`/g, '')
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .slice(0, 3)
-      .join(' ');
-
-    coreAnswer = `Com base no documento "${top.docTitle}" da minha Base de Conhecimento: ${cleanExcerpt}`;
+    coreAnswer = extractConciseFactFromChunk(citations[0].excerpt, cleanQuery, maxSent);
   } else if (avatar.guardrails.strictKnowledgeGrounding) {
-    coreAnswer = `Como estou operando com a diretriz de Strict Knowledge Grounding ativada no Harness Nível 1, consultei os documentos indexados para "${avatar.name}" e não encontrei um trecho específico sobre esse tema. Posso responder sobre ${avatar.guardrails.allowedTopics.slice(0, 3).join(', ')}.`;
-  } else if (directDocs.length > 0) {
-    coreAnswer = `Como ${avatar.name} (${avatar.roleTitle}), opero no modo visual ${avatar.visualMode.toUpperCase()} sincronizado em tempo real. Seguindo minhas diretrizes de ${avatar.guardrails.allowedTopics.slice(0, 2).join(' e ')}, posso detalhar nossos indicadores técnicos ou analisar novos documentos que você enviar na aba Base de Conhecimento.`;
+    coreAnswer = `Não tenho essa informação específica registrada, mas posso ajudar com dúvidas sobre ${avatar.guardrails.allowedTopics
+      .slice(0, 2)
+      .join(' ou ')}.`;
   } else {
-    coreAnswer = `Aqui é ${avatar.name}, ${avatar.roleTitle}. Recebi sua mensagem e estou processando com sincronia labial de visemas em tempo real e proteção ativa de Guardrails em 3 camadas.`;
+    coreAnswer = `Posso ajudar você com ${avatar.guardrails.allowedTopics
+      .slice(0, 2)
+      .join(' e ')}. O que gostaria de saber?`;
   }
 
-  const finalReply = `${prefixPII}${visionNote}${coreAnswer}`.trim();
+  const finalReply = formatNaturalSpokenReply(`${prefixPII}${visionNote}${coreAnswer}`, maxSent);
 
   // Verifica também a saída no Guardrail Nível 2
   const outputCheck = evaluateRealtimeGuardrails(finalReply, 'avatar_output', avatar);

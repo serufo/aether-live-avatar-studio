@@ -69,7 +69,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     },
     guardrails: {
       systemRolePrompt:
-        'Você é Aria Vance, Arquiteta-Chefe de IA e Cloud Enterprise da Aether Corp. Responda de forma objetiva, técnica e acolhedora. Use sempre os dados da Base de Conhecimento para citar métricas de SLA, latência e arquitetura.',
+        'Você é Aria Vance, Arquiteta-Chefe de IA e Cloud da Aether Corp. Fale de forma natural, direta e fluida, em no máximo 2 frases curtas. Use os dados técnicos como conhecimento próprio, sem jamais mencionar documentos, manuais ou base de conhecimento.',
       strictKnowledgeGrounding: false,
       allowedTopics: [
         'Arquitetura de Software',
@@ -86,7 +86,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       responseLanguage: 'pt-BR',
       formalityLevel: 75,
       empathyLevel: 85,
-      maxResponseSentences: 4,
+      maxResponseSentences: 2,
       enableRealtimeInterceptor: true,
       blockPII: true,
       blockPromptInjection: true,
@@ -94,7 +94,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       customRegexRule: '\\b(?:SENHA_SECRETA|TOKEN_INTERNO_[0-9]+)\\b',
       autoCutAudioOnViolation: true,
       fallbackSafeResponse:
-        'Interrompi esta resposta pois o conteúdo solicitado aciona uma diretriz de proteção de segurança e escopo (Guardrail Nível 2). Posso ajudar com arquitetura técnica ou documentação autorizada.',
+        'Por segurança, não posso atender a esse pedido. Posso ajudar com dúvidas sobre nossa arquitetura ou infraestrutura cloud.',
       enableSemanticJudge: true,
       minComplianceThreshold: 80,
       logAllTurns: true,
@@ -102,14 +102,14 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     geminiConfig: {
       model: 'gemini-2.0-flash-exp',
       voiceName: 'Aoede',
-      temperature: 0.6,
+      temperature: 0.55,
       vadSensitivity: 0.75,
       enableCameraVision: true,
       enableScreenVision: true,
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá! Eu sou a Aria Vance, operando no motor 3D em tempo real integrado à Gemini Live API. Como posso apoiar sua arquitetura ou demonstrar nossos guardrails hoje?',
+      'Olá! Sou a Aria Vance. Como posso ajudar você hoje?',
     suggestedPrompts: [
       'Qual é o SLA de disponibilidade e latência da arquitetura Aether Cloud?',
       'Explique como funciona o pipeline de sincronia labial e visemas em tempo real.',
@@ -155,6 +155,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       externalProvider: 'local_25d',
       externalApiKey: '',
       externalAvatarId: 'helena-clinical-hd',
+      landmarks: HELENA_LANDMARKS,
     },
     visualOrb: {
       coreColor: '#10b981',
@@ -168,7 +169,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     },
     guardrails: {
       systemRolePrompt:
-        'Você é a Dra. Helena Monteiro, especialista em Governança Clínica, Bioética e Proteção de Dados Sensíveis (LGPD Art. 11). Forneça orientações institucionais baseadas nos protocolos anexados e jamais realize prescrição medicamentosa individual.',
+        'Você é a Dra. Helena Monteiro, especialista em Governança Clínica e LGPD na Saúde. Responda de forma acolhedora, natural e muito objetiva em 1 ou 2 frases curtas, sem citar nomes de documentos ou protocolos e sem realizar prescrição médica.',
       strictKnowledgeGrounding: true,
       allowedTopics: [
         'Compliance LGPD na Saúde',
@@ -184,7 +185,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       responseLanguage: 'pt-BR',
       formalityLevel: 90,
       empathyLevel: 92,
-      maxResponseSentences: 4,
+      maxResponseSentences: 2,
       enableRealtimeInterceptor: true,
       blockPII: true,
       blockPromptInjection: true,
@@ -192,7 +193,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       customRegexRule: '\\b(?:CRM_FALSO|PRONTUARIO_CONFIDENCIAL)\\b',
       autoCutAudioOnViolation: true,
       fallbackSafeResponse:
-        'Por normas de Bioética e Compliance Clínico (Guardrail Ativo), não realizo prescrições medicamentosas nem processo dados pessoais não anonimizados. Consulte o protocolo institucional LGPD.',
+        'Por normas éticas e de governança clínica, não realizo prescrições nem trato dados pessoais não anonimizados.',
       enableSemanticJudge: true,
       minComplianceThreshold: 88,
       logAllTurns: true,
@@ -207,7 +208,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou a Dra. Helena Monteiro, renderizada no motor Fotorrealista 2.5D em tempo real. Posso esclarecer normas de governança clínica, LGPD e nossos protocolos da base de conhecimento.',
+      'Olá, sou a Dra. Helena Monteiro. Como posso ajudar você hoje?',
     suggestedPrompts: [
       'Como o Artigo 11 da LGPD regula o tratamento de dados sensíveis de saúde?',
       'Qual é o prazo de retenção e protocolo de anonimização de prontuários no hospital?',
@@ -266,7 +267,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     },
     guardrails: {
       systemRolePrompt:
-        'Você é Kael Takashi, Líder de Cibersegurança e Resposta a Incidentes (SOC Tier-3). Seja ágil, preciso e cite sempre os playbooks de mitigação Zero-Trust da base de conhecimento.',
+        'Você é Kael Takashi, Líder de Cibersegurança e Resposta a Incidentes. Seja ágil, natural e direto em 1 ou 2 frases curtas, sem citar manuais ou playbooks explicitamente.',
       strictKnowledgeGrounding: false,
       allowedTopics: [
         'Cibersegurança Defensiva',
@@ -282,7 +283,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       responseLanguage: 'pt-BR',
       formalityLevel: 55,
       empathyLevel: 75,
-      maxResponseSentences: 4,
+      maxResponseSentences: 2,
       enableRealtimeInterceptor: true,
       blockPII: true,
       blockPromptInjection: true,
@@ -290,7 +291,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       customRegexRule: '\\b(?:PRIVATE_SSH_KEY|AWS_SECRET_ACCESS_KEY)\\b',
       autoCutAudioOnViolation: true,
       fallbackSafeResponse:
-        'Alerta do Guardrail SOC: Solicitação bloqueada por envolver artefatos ofensivos ou credenciais sensíveis. Posso orientar sobre defesa Zero-Trust e mitigação.',
+        'Não posso atender a solicitações ofensivas ou que envolvam credenciais sensíveis, mas posso ajudar com defesa e Zero-Trust.',
       enableSemanticJudge: true,
       minComplianceThreshold: 82,
       logAllTurns: true,
@@ -298,14 +299,14 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     geminiConfig: {
       model: 'gemini-2.0-flash-exp',
       voiceName: 'Puck',
-      temperature: 0.65,
+      temperature: 0.55,
       vadSensitivity: 0.78,
       enableCameraVision: true,
       enableScreenVision: true,
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Kael Takashi online no motor 2D LiveRig! Estou pronto para revisar seus playbooks Zero-Trust, analisar logs ou demonstrar expressões e física 2D em tempo real.',
+      'Olá! Aqui é o Kael Takashi. Como posso ajudar na segurança da sua operação hoje?',
     suggestedPrompts: [
       'Qual é o tempo máximo de contenção (MTTR) para incidentes Críticos P1 no nosso Playbook SOC?',
       'Como funciona a rotação mTLS e isolamento de pods no cluster Zero-Trust?',
@@ -364,7 +365,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     },
     guardrails: {
       systemRolePrompt:
-        'Você é o NEXUS-9, um sintetizador neural de inteligência analítica e risco quantitativo. Apresente sínteses executivas densas, métricas exatas dos documentos indexados e mantenha neutralidade analítica absoluta.',
+        'Você é o NEXUS-9, analista de inteligência e risco quantitativo. Responda de forma direta, natural e objetiva em até 2 frases curtas, entregando os números exatos sem citar o nome dos documentos.',
       strictKnowledgeGrounding: false,
       allowedTopics: [
         'Modelagem de Risco Quantitativo',
@@ -379,7 +380,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       responseLanguage: 'pt-BR',
       formalityLevel: 85,
       empathyLevel: 65,
-      maxResponseSentences: 4,
+      maxResponseSentences: 2,
       enableRealtimeInterceptor: true,
       blockPII: true,
       blockPromptInjection: true,
@@ -387,7 +388,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       customRegexRule: '\\b(?:CONTA_OFFSHORE_[0-9]+)\\b',
       autoCutAudioOnViolation: true,
       fallbackSafeResponse:
-        'Intervenção de Compliance Quantitativo: Operação bloqueada pelas regras de integridade regulatória.',
+        'Essa operação não é permitida pelas diretrizes de integridade regulatória.',
       enableSemanticJudge: true,
       minComplianceThreshold: 85,
       logAllTurns: true,
@@ -402,7 +403,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Sistemas harmônicos NEXUS-9 sincronizados. Meu campo de partículas reage em tempo real ao espectro de voz da Gemini Live API e às buscas na base de conhecimento.',
+      'Olá, sou o NEXUS-9. Qual métrica ou análise você gostaria de revisar?',
     suggestedPrompts: [
       'Qual é o limite de Value at Risk (VaR 99%) e liquidez exigido na política quantitativa 2026?',
       'Sintetize as diretrizes de latência e telemetria do ecossistema Aether Live.',

@@ -9,6 +9,7 @@ import {
 import {
   compileSystemInstruction,
   evaluateRealtimeGuardrails,
+  formatNaturalSpokenReply,
   searchKnowledgeBase,
   synthesizeGroundedResponse,
 } from './ragAndGuardrails';
@@ -774,7 +775,7 @@ export class GeminiLiveSessionManager {
             for (const fnCall of msg.toolCall.functionCalls) {
               if (fnCall.name === 'search_knowledge_base') {
                 const q = String(fnCall.args?.query || '');
-                const found = searchKnowledgeBase(q, avatar.id, documents, 3);
+                const found = searchKnowledgeBase(q, avatar.id, documents, 2);
                 activeCitations = found;
                 const toolResp = {
                   toolResponse: {
@@ -785,8 +786,8 @@ export class GeminiLiveSessionManager {
                         response: {
                           result:
                             found.length > 0
-                              ? found.map((c) => `[${c.docTitle}]: ${c.excerpt}`).join('\n\n')
-                              : 'Nenhum trecho específico encontrado.',
+                              ? found.map((c) => c.excerpt).join('\n\n')
+                              : 'Informação não consta no contexto.',
                         },
                       },
                     ],
@@ -822,7 +823,11 @@ export class GeminiLiveSessionManager {
 
           if (msg.serverContent?.turnComplete) {
             if (accumulatedText.trim()) {
-              callbacks.onModelTurnComplete(accumulatedText.trim(), activeCitations);
+              const cleanTurn = formatNaturalSpokenReply(
+                accumulatedText.trim(),
+                avatar.guardrails.maxResponseSentences || 2
+              );
+              callbacks.onModelTurnComplete(cleanTurn, activeCitations);
             }
             accumulatedText = '';
             activeCitations = [];
@@ -901,74 +906,73 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 3);
+    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 2);
+    const maxSentences = Math.max(1, Math.min(avatar.guardrails.maxResponseSentences || 2, 3));
 
     if (this.apiKey) {
-      try {
-        const systemInstruction = compileSystemInstruction(avatar, documents);
-        const ragContextText =
-          citations.length > 0
-            ? `\n\n[TRECHOS RECUPERADOS DO RAG PARA ESTA PERGUNTA]:\n` +
-              citations
-                .map(
-                  (c) =>
-                    `Fonte (${c.docTitle} - score ${Math.round(c.score * 100)}%):\n${c.excerpt}`
-                )
-                .join('\n\n')
-            : '';
+      const systemInstruction = compileSystemInstruction(avatar, documents);
+      const ragContextText =
+        citations.length > 0
+          ? `\n\n[CONHECIMENTO INTERNO RELEVANTE (use os fatos naturalmente em até ${maxSentences} frases curtas, SEM citar documento ou fonte)]:\n` +
+            citations.map((c) => c.excerpt).join('\n\n')
+          : `\n\n[Responda de forma natural, direta e objetiva em até ${maxSentences} frases curtas, sem citar fontes.]`;
 
-        const userParts: Array<Record<string, unknown>> = [
-          {
-            text: `${inputGuard.sanitizedText}${ragContextText}`,
+      const userParts: Array<Record<string, unknown>> = [
+        {
+          text: `${inputGuard.sanitizedText}${ragContextText}`,
+        },
+      ];
+
+      if (visionFrameBase64) {
+        userParts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: visionFrameBase64.replace(/^data:image\/\w+;base64,/, ''),
           },
-        ];
+        });
+      }
 
-        if (visionFrameBase64) {
-          userParts.push({
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: visionFrameBase64.replace(/^data:image\/\w+;base64,/, ''),
-            },
-          });
-        }
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+      for (const modelId of candidateModels) {
+        try {
+          const resp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(
+              this.apiKey
+            )}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                contents: [{ role: 'user', parts: userParts }],
+                generationConfig: {
+                  temperature: avatar.geminiConfig.temperature,
+                  maxOutputTokens: 130,
+                },
+              }),
+            }
+          );
 
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(
-            this.apiKey
-          )}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemInstruction }] },
-              contents: [{ role: 'user', parts: userParts }],
-              generationConfig: {
-                temperature: avatar.geminiConfig.temperature,
-                maxOutputTokens: 280,
-              },
-            }),
+          if (resp.ok) {
+            const data = await resp.json();
+            const rawReply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (rawReply.trim()) {
+              const naturalReply = formatNaturalSpokenReply(rawReply, maxSentences);
+              const outGuard = evaluateRealtimeGuardrails(naturalReply, 'avatar_output', avatar);
+              return {
+                replyText: outGuard.sanitizedText,
+                citations,
+                emotion: !outGuard.allowed ? 'alert' : citations.length > 0 ? 'thinking' : 'happy',
+                gesture: !outGuard.allowed ? 'emphasis' : 'explain',
+                wasBlocked: !outGuard.allowed,
+                latencyMs: Math.round(performance.now() - t0),
+                modeUsed: this.isLiveWsConnected() ? 'gemini_live_ws' : 'gemini_rest',
+              };
+            }
           }
-        );
-
-        if (resp.ok) {
-          const data = await resp.json();
-          const rawReply =
-            data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-            'Processado via Gemini Live.';
-
-          const outGuard = evaluateRealtimeGuardrails(rawReply, 'avatar_output', avatar);
-          return {
-            replyText: outGuard.sanitizedText,
-            citations,
-            emotion: !outGuard.allowed ? 'alert' : citations.length > 0 ? 'thinking' : 'happy',
-            gesture: !outGuard.allowed ? 'emphasis' : 'explain',
-            wasBlocked: !outGuard.allowed,
-            latencyMs: Math.round(performance.now() - t0),
-            modeUsed: this.isLiveWsConnected() ? 'gemini_live_ws' : 'gemini_rest',
-          };
+        } catch {
+          // Tenta próximo modelo ou fallback local
         }
-      } catch {
-        // Fallback suave
       }
     }
 
