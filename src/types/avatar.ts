@@ -45,6 +45,14 @@ export interface VisualConfig2D {
   glowIntensity: number;
 }
 
+export interface PhotoFaceLandmarks {
+  leftEye: { u: number; v: number; radiusX?: number; radiusY?: number };
+  rightEye: { u: number; v: number; radiusX?: number; radiusY?: number };
+  mouth: { u: number; v: number; width: number; lipThickness?: number };
+  noseTip?: { u: number; v: number };
+  chinV: number;
+}
+
 export interface VisualConfigPhoto {
   portraitUrl: string;
   presetId: 'helena' | 'marcus' | 'custom';
@@ -56,6 +64,7 @@ export interface VisualConfigPhoto {
   externalProvider: 'local_25d' | 'simli' | 'heygen' | 'tavus';
   externalApiKey: string;
   externalAvatarId: string;
+  landmarks?: PhotoFaceLandmarks;
 }
 
 export interface VisualConfigOrb {

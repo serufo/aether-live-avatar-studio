@@ -6,6 +6,11 @@ import {
   RagCitation,
   VisualMode,
 } from '../../types/avatar';
+import { HELENA_LANDMARKS, MARCUS_LANDMARKS } from '../../data/defaultAvatars';
+import {
+  detectLandmarksFromImageElement,
+  resolveAvatarLandmarks,
+} from '../stage/AvatarEnginePhotorealistic';
 import {
   chunkDocumentContent,
   compileSystemInstruction,
@@ -78,6 +83,9 @@ export const AdminStudioPanel: React.FC<Props> = ({
   const [newBlockedTopic, setNewBlockedTopic] = useState('');
   const [newAllowedTopic, setNewAllowedTopic] = useState('');
   const [showCompiledPrompt, setShowCompiledPrompt] = useState(false);
+  const [activeLandmarkTarget, setActiveLandmarkTarget] = useState<
+    'leftEye' | 'rightEye' | 'mouth'
+  >('mouth');
 
   const avatarDocs = documents.filter((d) => d.avatarId === activeAvatar.id);
 
@@ -148,14 +156,20 @@ export const AdminStudioPanel: React.FC<Props> = ({
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = String(reader.result || '');
-      onUpdateAvatar({
-        ...activeAvatar,
-        visualPhoto: {
-          ...activeAvatar.visualPhoto,
-          presetId: 'custom',
-          portraitUrl: dataUrl,
-        },
-      });
+      const img = new Image();
+      img.onload = () => {
+        const detected = detectLandmarksFromImageElement(img);
+        onUpdateAvatar({
+          ...activeAvatar,
+          visualPhoto: {
+            ...activeAvatar.visualPhoto,
+            presetId: 'custom',
+            portraitUrl: dataUrl,
+            landmarks: detected,
+          },
+        });
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -628,97 +642,335 @@ export const AdminStudioPanel: React.FC<Props> = ({
             )}
 
             {/* Parâmetros Específicos do Modo Fotorrealista */}
-            {activeAvatar.visualMode === 'photorealistic' && (
-              <div className="admin-Block">
-                <h3 className="block-heading">
-                  Motor Fotorrealista Híbrido (Malha 2.5D + API Externa)
-                </h3>
+            {activeAvatar.visualMode === 'photorealistic' && (() => {
+              const curLandmarks = resolveAvatarLandmarks(activeAvatar);
+              return (
+                <div className="admin-Block">
+                  <h3 className="block-heading">
+                    Motor Fotorrealista Híbrido (Anatomia 2.5D de Olhos & Boca + API Externa)
+                  </h3>
 
-                <label className="field-label">
-                  Retrato Base de Alta Definição
-                  <select
-                    className="field-select"
-                    value={activeAvatar.visualPhoto.presetId}
-                    onChange={(e) => {
-                      const preset = e.target.value as 'helena' | 'marcus' | 'custom';
-                      const url =
-                        preset === 'helena'
-                          ? 'avatars/helena.jpg'
-                          : preset === 'marcus'
-                          ? 'avatars/marcus.jpg'
-                          : activeAvatar.visualPhoto.portraitUrl;
-                      onUpdateAvatar({
-                        ...activeAvatar,
-                        visualPhoto: {
-                          ...activeAvatar.visualPhoto,
-                          presetId: preset,
-                          portraitUrl: url,
-                        },
-                      });
+                  <label className="field-label">
+                    Retrato Base de Alta Definição
+                    <select
+                      className="field-select"
+                      value={activeAvatar.visualPhoto.presetId}
+                      onChange={(e) => {
+                        const preset = e.target.value as 'helena' | 'marcus' | 'custom';
+                        const url =
+                          preset === 'helena'
+                            ? 'avatars/helena.jpg'
+                            : preset === 'marcus'
+                            ? 'avatars/marcus.jpg'
+                            : activeAvatar.visualPhoto.portraitUrl;
+                        const presetLandmarks =
+                          preset === 'helena'
+                            ? HELENA_LANDMARKS
+                            : preset === 'marcus'
+                            ? MARCUS_LANDMARKS
+                            : activeAvatar.visualPhoto.landmarks;
+                        onUpdateAvatar({
+                          ...activeAvatar,
+                          visualPhoto: {
+                            ...activeAvatar.visualPhoto,
+                            presetId: preset,
+                            portraitUrl: url,
+                            landmarks: presetLandmarks,
+                          },
+                        });
+                      }}
+                    >
+                      <option value="helena">Dra. Helena Monteiro (Estúdio Executivo HD)</option>
+                      <option value="marcus">Dr. Marcus Silva (Arquiteto de Sistemas HD)</option>
+                      <option value="custom">Retrato Customizado Enviado pelo Admin</option>
+                    </select>
+                  </label>
+
+                  <label className="upload-box-compact">
+                    <Upload size={15} />
+                    <span>Enviar Foto de Retrato Própria (.JPG, .PNG, .WEBP)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCustomPortraitUpload}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+
+                  {/* Mapeamento Anatômico Interativo de Olhos e Boca na Foto */}
+                  <div
+                    style={{
+                      background: 'rgba(9, 13, 22, 0.78)',
+                      border: '1px solid rgba(0, 240, 255, 0.22)',
+                      borderRadius: '10px',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
                     }}
                   >
-                    <option value="helena">Dra. Helena Monteiro (Estúdio Executivo HD)</option>
-                    <option value="marcus">Dr. Marcus Silva (Arquiteto de Sistemas HD)</option>
-                    <option value="custom">Retrato Customizado Enviado pelo Admin</option>
-                  </select>
-                </label>
+                    <div className="section-row-between">
+                      <span className="section-label" style={{ color: '#00f0ff' }}>
+                        MAPEAMENTO DE OLHOS E BOCA NA FOTO
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-ghost-xs"
+                        onClick={() => {
+                          const defaultLm =
+                            activeAvatar.visualPhoto.presetId === 'marcus'
+                              ? MARCUS_LANDMARKS
+                              : HELENA_LANDMARKS;
+                          onUpdateAvatar({
+                            ...activeAvatar,
+                            visualPhoto: {
+                              ...activeAvatar.visualPhoto,
+                              landmarks: defaultLm,
+                            },
+                          });
+                        }}
+                        title="Restaurar coordenadas exatas medidas na foto"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Calibrar Exato</span>
+                      </button>
+                    </div>
 
-                <label className="upload-box-compact">
-                  <Upload size={15} />
-                  <span>Enviar Foto de Retrato Própria (.JPG, .PNG, .WEBP)</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCustomPortraitUpload}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {(
+                        [
+                          { id: 'leftEye', label: 'Olho Esq.' },
+                          { id: 'rightEye', label: 'Olho Dir.' },
+                          { id: 'mouth', label: 'Linha da Boca' },
+                        ] as const
+                      ).map((pt) => (
+                        <button
+                          key={pt.id}
+                          type="button"
+                          className={`chip-btn ${activeLandmarkTarget === pt.id ? 'active' : ''}`}
+                          onClick={() => setActiveLandmarkTarget(pt.id)}
+                          style={{
+                            flex: 1,
+                            fontSize: '0.73rem',
+                            padding: '5px 8px',
+                            borderColor:
+                              activeLandmarkTarget === pt.id
+                                ? '#00f0ff'
+                                : 'rgba(148, 163, 184, 0.25)',
+                            background:
+                              activeLandmarkTarget === pt.id
+                                ? 'rgba(0, 240, 255, 0.14)'
+                                : 'rgba(15, 23, 42, 0.6)',
+                            color: activeLandmarkTarget === pt.id ? '#00f0ff' : '#cbd5e1',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {pt.label}
+                        </button>
+                      ))}
+                    </div>
 
-                <label className="field-label">
-                  Intensidade da Articulação Labial/Mandibular 2.5D:{' '}
-                  <span className="mono-val">
-                    {Math.round(activeAvatar.visualPhoto.warpIntensity * 100)}%
-                  </span>
-                  <input
-                    type="range"
-                    min={0.3}
-                    max={1.4}
-                    step={0.05}
-                    value={activeAvatar.visualPhoto.warpIntensity}
-                    onChange={(e) =>
-                      onUpdateAvatar({
-                        ...activeAvatar,
-                        visualPhoto: {
-                          ...activeAvatar.visualPhoto,
-                          warpIntensity: Number(e.target.value),
-                        },
-                      })
-                    }
-                  />
-                </label>
+                    <div
+                      style={{
+                        position: 'relative',
+                        width: '100%',
+                        maxWidth: '230px',
+                        aspectRatio: '1 / 1',
+                        margin: '0 auto',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        border: '1px solid rgba(148, 163, 184, 0.3)',
+                        cursor: 'crosshair',
+                      }}
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const u = Number(
+                          Math.max(0.1, Math.min(0.9, (e.clientX - rect.left) / rect.width)).toFixed(
+                            3
+                          )
+                        );
+                        const v = Number(
+                          Math.max(0.1, Math.min(0.9, (e.clientY - rect.top) / rect.height)).toFixed(
+                            3
+                          )
+                        );
+                        const updated = { ...curLandmarks };
+                        if (activeLandmarkTarget === 'leftEye') {
+                          updated.leftEye = { ...updated.leftEye, u, v };
+                        } else if (activeLandmarkTarget === 'rightEye') {
+                          updated.rightEye = { ...updated.rightEye, u, v };
+                        } else {
+                          updated.mouth = { ...updated.mouth, u, v };
+                          updated.chinV = Number(Math.min(0.75, v + 0.085).toFixed(3));
+                        }
+                        onUpdateAvatar({
+                          ...activeAvatar,
+                          visualPhoto: {
+                            ...activeAvatar.visualPhoto,
+                            landmarks: updated,
+                          },
+                        });
+                      }}
+                      title="Clique na foto para reposicionar o ponto selecionado"
+                    >
+                      <img
+                        src={activeAvatar.visualPhoto.portraitUrl || 'avatars/helena.jpg'}
+                        alt={activeAvatar.name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                      {/* Marcador Olho Esquerdo */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${curLandmarks.leftEye.u * 100}%`,
+                          top: `${curLandmarks.leftEye.v * 100}%`,
+                          width: `${(curLandmarks.leftEye.radiusX ?? 0.032) * 200}%`,
+                          height: `${(curLandmarks.leftEye.radiusY ?? 0.015) * 220}%`,
+                          transform: 'translate(-50%, -50%)',
+                          border: '1.5px solid #00f0ff',
+                          borderRadius: '50%',
+                          boxShadow: '0 0 6px rgba(0,240,255,0.8)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                      {/* Marcador Olho Direito */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${curLandmarks.rightEye.u * 100}%`,
+                          top: `${curLandmarks.rightEye.v * 100}%`,
+                          width: `${(curLandmarks.rightEye.radiusX ?? 0.032) * 200}%`,
+                          height: `${(curLandmarks.rightEye.radiusY ?? 0.015) * 220}%`,
+                          transform: 'translate(-50%, -50%)',
+                          border: '1.5px solid #00f0ff',
+                          borderRadius: '50%',
+                          boxShadow: '0 0 6px rgba(0,240,255,0.8)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                      {/* Marcador Linha da Boca */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${curLandmarks.mouth.u * 100}%`,
+                          top: `${curLandmarks.mouth.v * 100}%`,
+                          width: `${curLandmarks.mouth.width * 100}%`,
+                          height: '10px',
+                          transform: 'translate(-50%, -50%)',
+                          border: '1.5px solid #10b981',
+                          borderRadius: '999px',
+                          background: 'rgba(16, 185, 129, 0.18)',
+                          boxShadow: '0 0 6px rgba(16,185,129,0.85)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    </div>
 
-                <label className="field-label">
-                  Amplitude de Movimento 3D da Cabeça:{' '}
-                  <span className="mono-val">
-                    {Math.round(activeAvatar.visualPhoto.headMotionScale * 100)}%
-                  </span>
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={1.3}
-                    step={0.05}
-                    value={activeAvatar.visualPhoto.headMotionScale}
-                    onChange={(e) =>
-                      onUpdateAvatar({
-                        ...activeAvatar,
-                        visualPhoto: {
-                          ...activeAvatar.visualPhoto,
-                          headMotionScale: Number(e.target.value),
-                        },
-                      })
-                    }
-                  />
-                </label>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '0.7rem',
+                        color: '#94a3b8',
+                        fontFamily: 'JetBrains Mono, monospace',
+                      }}
+                    >
+                      <span>
+                        Olho E: ({Math.round(curLandmarks.leftEye.u * 100)}%,{' '}
+                        {Math.round(curLandmarks.leftEye.v * 100)}%)
+                      </span>
+                      <span>
+                        Olho D: ({Math.round(curLandmarks.rightEye.u * 100)}%,{' '}
+                        {Math.round(curLandmarks.rightEye.v * 100)}%)
+                      </span>
+                      <span>
+                        Boca: ({Math.round(curLandmarks.mouth.u * 100)}%,{' '}
+                        {Math.round(curLandmarks.mouth.v * 100)}%)
+                      </span>
+                    </div>
+
+                    <label className="field-label" style={{ marginTop: '2px' }}>
+                      Largura da Linha Labial:{' '}
+                      <span className="mono-val">
+                        {Math.round(curLandmarks.mouth.width * 100)}%
+                      </span>
+                      <input
+                        type="range"
+                        min={0.07}
+                        max={0.16}
+                        step={0.002}
+                        value={curLandmarks.mouth.width}
+                        onChange={(e) =>
+                          onUpdateAvatar({
+                            ...activeAvatar,
+                            visualPhoto: {
+                              ...activeAvatar.visualPhoto,
+                              landmarks: {
+                                ...curLandmarks,
+                                mouth: {
+                                  ...curLandmarks.mouth,
+                                  width: Number(e.target.value),
+                                },
+                              },
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <label className="field-label">
+                    Intensidade da Articulação Labial/Mandibular 2.5D:{' '}
+                    <span className="mono-val">
+                      {Math.round(activeAvatar.visualPhoto.warpIntensity * 100)}%
+                    </span>
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={1.4}
+                      step={0.05}
+                      value={activeAvatar.visualPhoto.warpIntensity}
+                      onChange={(e) =>
+                        onUpdateAvatar({
+                          ...activeAvatar,
+                          visualPhoto: {
+                            ...activeAvatar.visualPhoto,
+                            warpIntensity: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label className="field-label">
+                    Amplitude de Movimento 3D da Cabeça:{' '}
+                    <span className="mono-val">
+                      {Math.round(activeAvatar.visualPhoto.headMotionScale * 100)}%
+                    </span>
+                    <input
+                      type="range"
+                      min={0.2}
+                      max={1.3}
+                      step={0.05}
+                      value={activeAvatar.visualPhoto.headMotionScale}
+                      onChange={(e) =>
+                        onUpdateAvatar({
+                          ...activeAvatar,
+                          visualPhoto: {
+                            ...activeAvatar.visualPhoto,
+                            headMotionScale: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </label>
 
                 <label className="field-label">
                   Provedor de Renderização Fotorrealista
@@ -786,7 +1038,8 @@ export const AdminStudioPanel: React.FC<Props> = ({
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
 
             {/* Parâmetros Específicos do Modo Orbe de Partículas */}
             {activeAvatar.visualMode === 'orb' && (

@@ -1,4 +1,20 @@
-import { AvatarProfile, KnowledgeDocument, GuardrailAuditEvent } from '../types/avatar';
+import { AvatarProfile, KnowledgeDocument, GuardrailAuditEvent, PhotoFaceLandmarks } from '../types/avatar';
+
+export const HELENA_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.442, v: 0.327, radiusX: 0.032, radiusY: 0.015 },
+  rightEye: { u: 0.571, v: 0.324, radiusX: 0.032, radiusY: 0.015 },
+  noseTip: { u: 0.506, v: 0.405 },
+  mouth: { u: 0.506, v: 0.469, width: 0.108, lipThickness: 0.018 },
+  chinV: 0.551,
+};
+
+export const MARCUS_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.431, v: 0.314, radiusX: 0.032, radiusY: 0.014 },
+  rightEye: { u: 0.571, v: 0.316, radiusX: 0.032, radiusY: 0.014 },
+  noseTip: { u: 0.501, v: 0.395 },
+  mouth: { u: 0.502, v: 0.466, width: 0.110, lipThickness: 0.018 },
+  chinV: 0.575,
+};
 
 export const DEFAULT_AVATARS: AvatarProfile[] = [
   {
@@ -39,6 +55,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       externalProvider: 'local_25d',
       externalApiKey: '',
       externalAvatarId: '',
+      landmarks: HELENA_LANDMARKS,
     },
     visualOrb: {
       coreColor: '#00f0ff',
@@ -235,6 +252,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       externalProvider: 'local_25d',
       externalApiKey: '',
       externalAvatarId: '',
+      landmarks: MARCUS_LANDMARKS,
     },
     visualOrb: {
       coreColor: '#f59e0b',
@@ -322,7 +340,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       glowIntensity: 1.0,
     },
     visualPhoto: {
-      portraitUrl: '/avatars/marcus.jpg',
+      portraitUrl: 'avatars/marcus.jpg',
       presetId: 'marcus',
       warpIntensity: 0.75,
       headMotionScale: 0.7,
@@ -332,6 +350,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       externalProvider: 'local_25d',
       externalApiKey: '',
       externalAvatarId: '',
+      landmarks: MARCUS_LANDMARKS,
     },
     visualOrb: {
       coreColor: '#00f0ff',
