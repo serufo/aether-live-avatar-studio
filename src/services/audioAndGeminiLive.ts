@@ -13,31 +13,132 @@ import {
   synthesizeGroundedResponse,
 } from './ragAndGuardrails';
 
+export type VoicePersonaName = 'Aoede' | 'Kore' | 'Puck' | 'Charon' | 'Fenrir';
+
+interface VoiceProfileSpec {
+  gender: 'female' | 'male';
+  variantIndex: number;
+  pitch: number;
+  rate: number;
+  baseFormantHz: number;
+  label: string;
+}
+
+export const VOICE_PERSONA_SPECS: Record<VoicePersonaName, VoiceProfileSpec> = {
+  Aoede: {
+    gender: 'female',
+    variantIndex: 0,
+    pitch: 1.18,
+    rate: 1.05,
+    baseFormantHz: 225,
+    label: 'Aoede (Feminina • Executiva & Clara)',
+  },
+  Kore: {
+    gender: 'female',
+    variantIndex: 1,
+    pitch: 0.92,
+    rate: 0.93,
+    baseFormantHz: 185,
+    label: 'Kore (Feminina • Serena & Empática)',
+  },
+  Puck: {
+    gender: 'male',
+    variantIndex: 0,
+    pitch: 0.74,
+    rate: 1.12,
+    baseFormantHz: 140,
+    label: 'Puck (Masculina • Dinâmica & Ágil)',
+  },
+  Charon: {
+    gender: 'male',
+    variantIndex: 1,
+    pitch: 0.52,
+    rate: 0.88,
+    baseFormantHz: 100,
+    label: 'Charon (Masculina • Profunda & Analítica)',
+  },
+  Fenrir: {
+    gender: 'male',
+    variantIndex: 2,
+    pitch: 0.64,
+    rate: 1.0,
+    baseFormantHz: 120,
+    label: 'Fenrir (Masculina • Firme & Direta)',
+  },
+};
+
 export class RealtimeAudioVisemeEngine {
   private audioCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
   private freqData: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
   private isSpeaking = false;
+  private hasActivePcmStream = false;
   private currentPhonemeText = '';
+  private currentVoiceName: VoicePersonaName = 'Aoede';
+  private lastSelectedVoiceLabel = 'Inicializando...';
+  private boundaryCharIndex = -1;
   private speechStartTime = 0;
   private speechDurationMs = 0;
   private nextPlaybackTime = 0;
   private activeSources: AudioBufferSourceNode[] = [];
+  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private blinkTimer = 0;
   private nextBlinkAt = 2.8;
   private isBlinking = false;
   private muted = false;
+  private apiKey = '';
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+  private activeAbortController: AbortController | null = null;
+
+  constructor() {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const loadVoices = () => {
+        try {
+          const list = window.speechSynthesis.getVoices();
+          if (list && list.length > 0) {
+            this.cachedVoices = list;
+          }
+        } catch {
+          // Ignore
+        }
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }
+
+  public setApiKey(key: string) {
+    this.apiKey = key.trim();
+  }
+
+  public getLastSelectedVoiceLabel(): string {
+    return this.lastSelectedVoiceLabel;
+  }
+
+  public getAvailableDeviceVoices(): SpeechSynthesisVoice[] {
+    if (this.cachedVoices.length > 0) return this.cachedVoices;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        this.cachedVoices = window.speechSynthesis.getVoices();
+      } catch {
+        // Ignore
+      }
+    }
+    return this.cachedVoices;
+  }
 
   public initAudioContext(): AudioContext {
     if (!this.audioCtx) {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new Ctx();
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 512;
       this.analyser.smoothingTimeConstant = 0.65;
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.value = this.muted ? 0 : 0.9;
+      this.gainNode.gain.value = this.muted ? 0 : 0.98;
       this.analyser.connect(this.gainNode);
       this.gainNode.connect(this.audioCtx.destination);
       this.freqData = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
@@ -51,9 +152,9 @@ export class RealtimeAudioVisemeEngine {
   public setMuted(muted: boolean) {
     this.muted = muted;
     if (this.gainNode && this.audioCtx) {
-      this.gainNode.gain.setValueAtTime(muted ? 0 : 0.9, this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(muted ? 0 : 0.98, this.audioCtx.currentTime);
     }
-    if (muted && 'speechSynthesis' in window) {
+    if (muted && typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
   }
@@ -62,8 +163,106 @@ export class RealtimeAudioVisemeEngine {
     return this.isSpeaking;
   }
 
-  // Enfileira áudio PCM 24kHz 16-bit Little Endian vindo da Gemini Live API WebSocket
-  public enqueuePcm24kBase64(base64Pcm: string) {
+  // Seleciona vozes reais e distintas (Android, iOS, Windows, macOS) para cada persona
+  public selectVoiceForPersona(voiceName: VoicePersonaName): {
+    voice: SpeechSynthesisVoice | null;
+    pitch: number;
+    rate: number;
+    resolvedLabel: string;
+  } {
+    const spec = VOICE_PERSONA_SPECS[voiceName] || VOICE_PERSONA_SPECS.Aoede;
+    const allVoices = this.getAvailableDeviceVoices();
+
+    if (!allVoices || allVoices.length === 0) {
+      return {
+        voice: null,
+        pitch: spec.pitch,
+        rate: spec.rate,
+        resolvedLabel: `${voiceName} (Pitch ${spec.pitch}x)`,
+      };
+    }
+
+    // Filtra vozes em Português (pt-BR, pt_BR, pt-PT)
+    const ptVoices = allVoices.filter(
+      (v) => /^pt([-_]|$)/i.test(v.lang.trim()) || /portugu/i.test(v.name)
+    );
+    const pool = ptVoices.length > 0 ? ptVoices : allVoices;
+
+    // Pontuação de qualidade (prioriza vozes Network/Natural/Neural/Premium de alta definição)
+    const scoreVoice = (v: SpeechSynthesisVoice): number => {
+      const n = v.name.toLowerCase();
+      let s = 0;
+      if (v.lang.toLowerCase().includes('br')) s += 30;
+      if (n.includes('natural') || n.includes('neural')) s += 60;
+      if (n.includes('network') || n.includes('online')) s += 45;
+      if (n.includes('premium') || n.includes('enhanced')) s += 40;
+      if (n.includes('google')) s += 30;
+      if (
+        n.includes('francisca') ||
+        n.includes('antonio') ||
+        n.includes('thalita') ||
+        n.includes('luciana') ||
+        n.includes('felipe') ||
+        n.includes('fabio') ||
+        n.includes('daniel')
+      ) {
+        s += 25;
+      }
+      return s;
+    };
+
+    const sortedPool = [...pool].sort((a, b) => scoreVoice(b) - scoreVoice(a));
+
+    // Identificadores femininos e masculinos incluindo códigos internos do Android (afs, bmf, pte, bmm, ptd) e iOS/Desktop
+    const femaleRegex =
+      /francisca|thalita|luciana|maria|joana|yara|fernanda|catarina|helena|vitoria|vitória|camila|leticia|leila|raquel|shelley|flo|sandy|samantha|victoria|female|feminina|mulher|\bafs\b|\bbmf\b|\bptc\b|\bsfg\b|#f\b/i;
+    const maleRegex =
+      /antonio|antônio|fabio|fábio|daniel|felipe|joaquim|humberto|nicolau|ricardo|cristiano|jorge|lucas|marcelo|donato|duarte|reed|rocko|eddy|alex|male|masculino|homem|\bpte\b|\bbmm\b|\bptd\b|\bsfm\b|#m\b/i;
+
+    const femaleVoices = sortedPool.filter((v) => femaleRegex.test(v.name));
+    const maleVoices = sortedPool.filter((v) => maleRegex.test(v.name));
+
+    let chosenVoice: SpeechSynthesisVoice | null = null;
+
+    if (spec.gender === 'female') {
+      if (femaleVoices.length > spec.variantIndex) {
+        chosenVoice = femaleVoices[spec.variantIndex];
+      } else if (femaleVoices.length > 0) {
+        chosenVoice = femaleVoices[0];
+      } else {
+        chosenVoice = sortedPool[spec.variantIndex % sortedPool.length];
+      }
+    } else {
+      if (maleVoices.length > spec.variantIndex) {
+        chosenVoice = maleVoices[spec.variantIndex];
+      } else if (maleVoices.length > 0) {
+        chosenVoice = maleVoices[0];
+      } else if (sortedPool.length > 1) {
+        // Garante voz diferente da primeira quando o SO tem múltiplas vozes sem gênero explícito no nome
+        const altIndex = Math.min(
+          sortedPool.length - 1,
+          1 + (spec.variantIndex % Math.max(1, sortedPool.length - 1))
+        );
+        chosenVoice = sortedPool[altIndex];
+      } else {
+        chosenVoice = sortedPool[0];
+      }
+    }
+
+    const shortVoiceName = chosenVoice
+      ? chosenVoice.name.replace(/^Microsoft |^Google /i, '').slice(0, 26)
+      : ' Padrão';
+
+    return {
+      voice: chosenVoice,
+      pitch: spec.pitch,
+      rate: spec.rate,
+      resolvedLabel: `${voiceName} → ${shortVoiceName} (Tom ${Math.round(spec.pitch * 100)}%)`,
+    };
+  }
+
+  // Enfileira áudio PCM 24kHz 16-bit Little Endian vindo da Gemini Live API (Vozes Aoede, Kore, Puck, Charon, Fenrir)
+  public enqueuePcm24kBase64(base64Pcm: string, onEndedCallback?: () => void) {
     const ctx = this.initAudioContext();
     if (!this.analyser) return;
 
@@ -95,117 +294,228 @@ export class RealtimeAudioVisemeEngine {
     source.start(startAt);
     this.nextPlaybackTime = startAt + buffer.duration;
     this.isSpeaking = true;
+    this.hasActivePcmStream = true;
 
     this.activeSources.push(source);
     source.onended = () => {
       this.activeSources = this.activeSources.filter((s) => s !== source);
       if (this.activeSources.length === 0 && ctx.currentTime >= this.nextPlaybackTime - 0.05) {
         this.isSpeaking = false;
+        this.hasActivePcmStream = false;
+        onEndedCallback?.();
       }
     };
   }
 
-  // Fala com síntese de voz natural + gerador harmônico de formantes para alimentar o FFT AnalyserNode
-  public speakWithVisemes(
+  // Tenta sintetizar áudio neural direto pela API do Gemini (24kHz PCM com a voz exata: Aoede, Kore, Puck, Charon, Fenrir)
+  private async trySynthesizeGeminiNativeAudio(
+    cleanText: string,
+    persona: VoicePersonaName,
+    signal: AbortSignal
+  ): Promise<string | null> {
+    if (!this.apiKey) return null;
+
+    const endpoints = [
+      {
+        model: 'gemini-2.5-flash-preview-tts',
+        prompt: `Leia exatamente este texto em português do Brasil com naturalidade: ${cleanText}`,
+      },
+      {
+        model: 'gemini-2.0-flash-exp',
+        prompt: `Repita exatamente o seguinte texto em português do Brasil, sem adicionar nenhuma palavra antes ou depois: "${cleanText}"`,
+      },
+    ];
+
+    for (const ep of endpoints) {
+      try {
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${ep.model}:generateContent?key=${encodeURIComponent(
+            this.apiKey
+          )}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal,
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: ep.prompt }] }],
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: {
+                      voiceName: persona,
+                    },
+                  },
+                },
+              },
+            }),
+          }
+        );
+
+        if (resp.ok) {
+          const data = await resp.json();
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          for (const part of parts) {
+            if (part?.inlineData?.data && part?.inlineData?.mimeType?.includes('audio')) {
+              return String(part.inlineData.data);
+            }
+          }
+        }
+      } catch {
+        if (signal.aborted) return null;
+      }
+    }
+
+    return null;
+  }
+
+  // Fala com troca real de voz por Avatar (Gemini Neural 24kHz quando com API Key + Vozes Distintas do Dispositivo)
+  public async speakWithVisemes(
     text: string,
-    voiceName: string,
+    voiceName: VoicePersonaName | string,
     onComplete?: () => void
   ) {
     this.interrupt();
-    this.currentPhonemeText = text;
+
+    const cleanText = text.replace(/[*#`_~]/g, '').trim();
+    if (!cleanText) {
+      onComplete?.();
+      return;
+    }
+
+    const persona = (voiceName in VOICE_PERSONA_SPECS ? voiceName : 'Aoede') as VoicePersonaName;
+    this.currentVoiceName = persona;
+    this.currentPhonemeText = cleanText;
+    this.boundaryCharIndex = -1;
     this.speechStartTime = performance.now();
-    // Média de 14 caracteres por segundo de fala fluida em PT-BR
-    this.speechDurationMs = Math.max(1800, Math.min(16000, (text.length / 14.5) * 1000));
+
+    const spec = VOICE_PERSONA_SPECS[persona];
+    this.speechDurationMs = Math.max(
+      1400,
+      Math.min(18000, ((cleanText.length / 14.2) * 1000) / spec.rate)
+    );
     this.isSpeaking = true;
 
-    // 1. Dispara Web Speech API nativa do navegador (se disponível e não mutado)
-    if ('speechSynthesis' in window && !this.muted) {
+    // 1. Se houver GEMINI_API_KEY configurada, gera o áudio neural nativo do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
+    if (this.apiKey && !this.muted) {
+      const abortCtrl = new AbortController();
+      this.activeAbortController = abortCtrl;
+      this.lastSelectedVoiceLabel = `Gemini Neural 24kHz (${persona})`;
+
+      const pcmBase64 = await this.trySynthesizeGeminiNativeAudio(
+        cleanText,
+        persona,
+        abortCtrl.signal
+      );
+
+      if (abortCtrl.signal.aborted) return;
+
+      if (pcmBase64) {
+        this.speechStartTime = performance.now();
+        this.enqueuePcm24kBase64(pcmBase64, onComplete);
+        return;
+      }
+    }
+
+    // 2. Síntese Neural do Dispositivo com Seleção de Vozes Femininas/Masculinas Distintas e Tom Calibrado
+    let completed = false;
+    const finishSpeech = () => {
+      if (completed) return;
+      completed = true;
+      this.isSpeaking = false;
+      this.boundaryCharIndex = -1;
+      if (this.fallbackTimer) {
+        clearTimeout(this.fallbackTimer);
+        this.fallbackTimer = null;
+      }
+      onComplete?.();
+    };
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window && !this.muted) {
       try {
         window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'pt-BR';
-        const voices = window.speechSynthesis.getVoices();
-        const ptVoice = voices.find((v) => v.lang.includes('pt'));
-        if (ptVoice) utter.voice = ptVoice;
-        utter.pitch =
-          voiceName === 'Aoede' || voiceName === 'Kore'
-            ? 1.08
-            : voiceName === 'Charon' || voiceName === 'Fenrir'
-            ? 0.92
-            : 1.0;
-        utter.rate = 1.05;
-        utter.onend = () => {
-          this.isSpeaking = false;
-          onComplete?.();
-        };
-        window.speechSynthesis.speak(utter);
-      } catch {
-        // Fallback para timer de visemas
-      }
-    }
 
-    // 2. Alimenta o AnalyserNode com envoltória acústica suave para garantir FFT real em qualquer navegador
-    try {
-      const ctx = this.initAudioContext();
-      if (this.analyser) {
-        const sampleRate = ctx.sampleRate;
-        const totalSamples = Math.floor((this.speechDurationMs / 1000) * sampleRate);
-        const buffer = ctx.createBuffer(1, totalSamples, sampleRate);
-        const data = buffer.getChannelData(0);
-        const baseFreq =
-          voiceName === 'Aoede' || voiceName === 'Kore' ? 210 : 125;
+        const selected = this.selectVoiceForPersona(persona);
+        this.lastSelectedVoiceLabel = selected.resolvedLabel;
 
-        for (let i = 0; i < totalSamples; i++) {
-          const t = i / sampleRate;
-          const charIdx = Math.floor((i / totalSamples) * text.length);
-          const ch = (text[charIdx] || ' ').toLowerCase();
-          const isPause = ch === ' ' || ch === ',' || ch === '.' || ch === ';';
-          const syllabicEnv = isPause
-            ? 0.02
-            : 0.35 + 0.65 * Math.abs(Math.sin(t * 14.0));
-          // Sinal muito sutil (quase inaudível sob a voz principal, mas forte no AnalyserNode antes do Gain)
-          const f1 = Math.sin(2 * Math.PI * baseFreq * t);
-          const f2 = 0.6 * Math.sin(2 * Math.PI * (baseFreq * 3.2) * t);
-          const f3 = 0.3 * Math.sin(2 * Math.PI * (baseFreq * 6.5) * t);
-          data[i] = (f1 + f2 + f3) * syllabicEnv * 0.008;
-        }
+        // Divide em sentenças curtas para evitar que o Chrome Mobile corte falas longas ou ignore o pitch
+        const sentences = cleanText
+          .split(/(?<=[.!?])\s+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
 
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.connect(this.analyser);
-        src.start();
-        this.activeSources.push(src);
-        src.onended = () => {
-          this.activeSources = this.activeSources.filter((s) => s !== src);
-          if (this.activeSources.length === 0) {
-            this.isSpeaking = false;
-            onComplete?.();
+        const chunksToSpeak = sentences.length > 0 ? sentences : [cleanText];
+        let charOffset = 0;
+
+        chunksToSpeak.forEach((sentence, idx) => {
+          const utter = new SpeechSynthesisUtterance(sentence);
+          utter.lang = 'pt-BR';
+          if (selected.voice) {
+            utter.voice = selected.voice;
+            utter.lang = selected.voice.lang || 'pt-BR';
           }
-        };
+          utter.pitch = selected.pitch;
+          utter.rate = selected.rate;
+          utter.volume = 1.0;
+
+          const baseOffset = charOffset;
+          charOffset += sentence.length + 1;
+
+          utter.onboundary = (ev) => {
+            if (typeof ev.charIndex === 'number') {
+              this.boundaryCharIndex = baseOffset + ev.charIndex;
+            }
+          };
+
+          if (idx === chunksToSpeak.length - 1) {
+            utter.onend = () => finishSpeech();
+            utter.onerror = () => finishSpeech();
+          }
+
+          window.speechSynthesis.speak(utter);
+        });
+      } catch {
+        // Fallback por timer
       }
-    } catch {
-      setTimeout(() => {
-        this.isSpeaking = false;
-        onComplete?.();
-      }, this.speechDurationMs);
+    } else {
+      const selected = this.selectVoiceForPersona(persona);
+      this.lastSelectedVoiceLabel = selected.resolvedLabel;
     }
+
+    this.fallbackTimer = setTimeout(() => {
+      finishSpeech();
+    }, this.speechDurationMs + 1200);
   }
 
-  // Corte imediato de áudio (Interrupt do Usuário ou Corte por Violação de Guardrail Nível 2)
+  // Corte imediato de áudio
   public interrupt() {
     this.isSpeaking = false;
+    this.hasActivePcmStream = false;
     this.currentPhonemeText = '';
+    this.boundaryCharIndex = -1;
     this.nextPlaybackTime = 0;
+
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+    }
+
+    if (this.fallbackTimer) {
+      clearTimeout(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
+
     for (const src of this.activeSources) {
       try {
         src.stop();
         src.disconnect();
       } catch {
-        // Ignora caso já parado
+        // Ignore
       }
     }
     this.activeSources = [];
-    if ('speechSynthesis' in window) {
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
         window.speechSynthesis.cancel();
       } catch {
@@ -214,7 +524,7 @@ export class RealtimeAudioVisemeEngine {
     }
   }
 
-  // Amostragem de Visemas a 60 FPS combinando espectro FFT + fonética da sílaba atual
+  // Amostragem de Visemas a 60 FPS
   public sampleVisemes(deltaSec: number): VisemeWeights {
     this.blinkTimer += deltaSec;
     if (!this.isBlinking && this.blinkTimer >= this.nextBlinkAt) {
@@ -247,7 +557,7 @@ export class RealtimeAudioVisemeEngine {
     let midEnergy = 0;
     let highEnergy = 0;
 
-    if (this.analyser) {
+    if (this.analyser && this.hasActivePcmStream) {
       this.analyser.getByteFrequencyData(this.freqData);
       for (let i = 1; i < 12; i++) lowEnergy += this.freqData[i];
       for (let i = 12; i < 48; i++) midEnergy += this.freqData[i];
@@ -257,7 +567,6 @@ export class RealtimeAudioVisemeEngine {
       highEnergy = highEnergy / (62 * 255);
     }
 
-    // Fonética sincronizada pelo caractere atual quando há texto conhecido
     const elapsed = performance.now() - this.speechStartTime;
     const progress =
       this.speechDurationMs > 0
@@ -268,32 +577,40 @@ export class RealtimeAudioVisemeEngine {
     let phonemeRound = 0;
     let phonemeWide = 0;
 
-    if (this.currentPhonemeText.length > 0) {
-      const idx = Math.floor(progress * this.currentPhonemeText.length);
+    if (this.currentPhonemeText.length > 0 && !this.hasActivePcmStream) {
+      const estimatedIdx = Math.floor(progress * this.currentPhonemeText.length);
+      const idx =
+        this.boundaryCharIndex >= 0
+          ? Math.min(
+              this.currentPhonemeText.length - 1,
+              this.boundaryCharIndex + Math.floor(((elapsed % 420) / 420) * 6)
+            )
+          : estimatedIdx;
+
       const ch = (this.currentPhonemeText[idx] || ' ').toLowerCase();
-      const wave = 0.65 + 0.35 * Math.sin(elapsed * 0.032);
+      const wave = 0.62 + 0.38 * Math.sin(elapsed * 0.034);
 
       if ('aáâãà'.includes(ch)) {
-        phonemeJaw = 0.85 * wave;
+        phonemeJaw = 0.86 * wave;
         phonemeWide = 0.55 * wave;
       } else if ('oóôõuú'.includes(ch)) {
-        phonemeJaw = 0.62 * wave;
+        phonemeJaw = 0.64 * wave;
         phonemeRound = 0.88 * wave;
       } else if ('eéêií'.includes(ch)) {
-        phonemeJaw = 0.48 * wave;
-        phonemeWide = 0.82 * wave;
+        phonemeJaw = 0.5 * wave;
+        phonemeWide = 0.84 * wave;
       } else if ('mpb'.includes(ch)) {
-        phonemeJaw = 0.05;
+        phonemeJaw = 0.04;
         phonemeRound = 0.15;
       } else if ('szfvcx'.includes(ch)) {
         phonemeJaw = 0.28 * wave;
-        phonemeWide = 0.6 * wave;
+        phonemeWide = 0.62 * wave;
       } else if (' .,;!?'.includes(ch)) {
-        phonemeJaw = 0.04;
+        phonemeJaw = 0.03;
       } else {
-        phonemeJaw = 0.42 * wave;
+        phonemeJaw = 0.44 * wave;
         phonemeRound = 0.3 * wave;
-        phonemeWide = 0.35 * wave;
+        phonemeWide = 0.36 * wave;
       }
     }
 
@@ -301,6 +618,8 @@ export class RealtimeAudioVisemeEngine {
     const mouthRound = Math.min(1, Math.max(phonemeRound, midEnergy * 1.8));
     const mouthWide = Math.min(1, Math.max(phonemeWide, highEnergy * 2.1));
     const energy = Math.min(1, jawOpen * 0.6 + mouthRound * 0.25 + mouthWide * 0.25);
+
+    const spec = VOICE_PERSONA_SPECS[this.currentVoiceName] || VOICE_PERSONA_SPECS.Aoede;
 
     const dominantBand: VisemeWeights['dominantBand'] =
       energy < 0.05
@@ -319,13 +638,12 @@ export class RealtimeAudioVisemeEngine {
       browLift: Math.min(1, energy * 0.65),
       eyeBlink,
       energy,
-      pitchHz: Math.round(140 + energy * 180),
+      pitchHz: Math.round(spec.baseFormantHz + energy * 95),
       dominantBand,
     };
   }
 }
 
-// Cliente Híbrido Gemini Live API (WebSocket BidiGenerateContent + REST Multimodal + RAG Function Calling)
 export class GeminiLiveSessionManager {
   private ws: WebSocket | null = null;
   private isConnected = false;
@@ -355,23 +673,27 @@ export class GeminiLiveSessionManager {
     this.isConnected = false;
   }
 
-  // Inicia conexão WebSocket real com a Gemini Multimodal Live API
   public connectLiveWebSocket(
     avatar: AvatarProfile,
     documents: KnowledgeDocument[],
     audioEngine: RealtimeAudioVisemeEngine,
     callbacks: {
-      onStatusChange: (status: 'connecting' | 'connected' | 'fallback_ready' | 'error', detail: string) => void;
+      onStatusChange: (
+        status: 'connecting' | 'connected' | 'fallback_ready' | 'error',
+        detail: string
+      ) => void;
       onModelTurnComplete: (text: string, citations: RagCitation[]) => void;
       onGuardrailCut: (reason: string, fallbackText: string) => void;
     }
   ) {
     this.disconnect();
+    audioEngine.setApiKey(this.apiKey);
 
     if (!this.apiKey) {
+      const selected = audioEngine.selectVoiceForPersona(avatar.geminiConfig.voiceName);
       callbacks.onStatusChange(
         'fallback_ready',
-        'Modo Neural Sandbox Ativo (Insira sua GEMINI_API_KEY no Admin para WebSocket Live direto)'
+        `Voz Ativa: ${selected.resolvedLabel}`
       );
       return;
     }
@@ -438,7 +760,7 @@ export class GeminiLiveSessionManager {
         ws.send(JSON.stringify(setupPayload));
         callbacks.onStatusChange(
           'connected',
-          `Gemini Live WebSocket Ativo (${avatar.geminiConfig.model} • Voz ${avatar.geminiConfig.voiceName})`
+          `Gemini Live 24kHz Ativo (${avatar.geminiConfig.model} • Voz ${avatar.geminiConfig.voiceName})`
         );
       };
 
@@ -448,7 +770,6 @@ export class GeminiLiveSessionManager {
             event.data instanceof Blob ? await event.data.text() : String(event.data);
           const msg = JSON.parse(rawText);
 
-          // Resposta de Tool Call (RAG em Tempo Real durante sessão Gemini Live)
           if (msg.toolCall?.functionCalls) {
             for (const fnCall of msg.toolCall.functionCalls) {
               if (fnCall.name === 'search_knowledge_base') {
@@ -481,7 +802,6 @@ export class GeminiLiveSessionManager {
             for (const part of parts) {
               if (part.text) {
                 accumulatedText += part.text;
-                // Verifica Guardrail Nível 2 em tempo real durante a geração!
                 const check = evaluateRealtimeGuardrails(
                   accumulatedText,
                   'avatar_output',
@@ -516,7 +836,7 @@ export class GeminiLiveSessionManager {
         this.isConnected = false;
         callbacks.onStatusChange(
           'fallback_ready',
-          'Gemini REST / Neural Sandbox Ativo (Fallback automático de baixa latência)'
+          `Gemini Neural TTS Ativo (Voz ${avatar.geminiConfig.voiceName})`
         );
       };
 
@@ -527,12 +847,11 @@ export class GeminiLiveSessionManager {
       this.isConnected = false;
       callbacks.onStatusChange(
         'fallback_ready',
-        'Modo Neural Sandbox Ativo'
+        `Voz Ativa (${avatar.geminiConfig.voiceName})`
       );
     }
   }
 
-  // Envia frame de vídeo (Webcam ou Compartilhamento de Tela) para a Gemini Live API
   public sendRealtimeVideoFrame(base64JpegNoPrefix: string) {
     if (!this.isLiveWsConnected() || !this.ws) return;
     this.ws.send(
@@ -549,7 +868,6 @@ export class GeminiLiveSessionManager {
     );
   }
 
-  // Processa um turno completo de diálogo (via Gemini API quando há chave ou Motor RAG Neural Integrado)
   public async processConversationTurn(params: {
     userText: string;
     avatar: AvatarProfile;
@@ -567,9 +885,9 @@ export class GeminiLiveSessionManager {
     modeUsed: 'gemini_live_ws' | 'gemini_rest' | 'sandbox_neural';
   }> {
     const t0 = performance.now();
-    const { userText, avatar, documents, visionFrameBase64, hasActiveCamera, hasActiveScreen } = params;
+    const { userText, avatar, documents, visionFrameBase64, hasActiveCamera, hasActiveScreen } =
+      params;
 
-    // 1. Guardrail Nível 2 imediato na entrada do usuário
     const inputGuard = evaluateRealtimeGuardrails(userText, 'user_input', avatar);
     if (!inputGuard.allowed) {
       return {
@@ -583,10 +901,8 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    // 2. Busca Semântica RAG na Base de Conhecimento do Avatar
     const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 3);
 
-    // 3. Se houver GEMINI_API_KEY configurada, chama a API oficial do Gemini com System Instruction + RAG + Frame de Visão
     if (this.apiKey) {
       try {
         const systemInstruction = compileSystemInstruction(avatar, documents);
@@ -594,7 +910,10 @@ export class GeminiLiveSessionManager {
           citations.length > 0
             ? `\n\n[TRECHOS RECUPERADOS DO RAG PARA ESTA PERGUNTA]:\n` +
               citations
-                .map((c) => `Fonte (${c.docTitle} - score ${Math.round(c.score * 100)}%):\n${c.excerpt}`)
+                .map(
+                  (c) =>
+                    `Fonte (${c.docTitle} - score ${Math.round(c.score * 100)}%):\n${c.excerpt}`
+                )
                 .join('\n\n')
             : '';
 
@@ -637,7 +956,6 @@ export class GeminiLiveSessionManager {
             data?.candidates?.[0]?.content?.parts?.[0]?.text ||
             'Processado via Gemini Live.';
 
-          // Passa resposta pelo Guardrail Nível 2
           const outGuard = evaluateRealtimeGuardrails(rawReply, 'avatar_output', avatar);
           return {
             replyText: outGuard.sanitizedText,
@@ -650,11 +968,10 @@ export class GeminiLiveSessionManager {
           };
         }
       } catch {
-        // Fallback suave para o sintetizador local caso a chave seja inválida ou sem rede
+        // Fallback suave
       }
     }
 
-    // 4. Motor Neural Local com RAG e Guardrails (funciona instantaneamente mesmo sem API Key)
     const localResult = synthesizeGroundedResponse(
       userText,
       avatar,

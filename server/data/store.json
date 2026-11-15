@@ -28,7 +28,7 @@
         "glowIntensity": 0.8
       },
       "visualPhoto": {
-        "portraitUrl": "/avatars/helena.jpg",
+        "portraitUrl": "avatars/helena.jpg",
         "presetId": "helena",
         "warpIntensity": 0.85,
         "headMotionScale": 0.75,
@@ -129,7 +129,7 @@
         "glowIntensity": 0.5
       },
       "visualPhoto": {
-        "portraitUrl": "/avatars/helena.jpg",
+        "portraitUrl": "avatars/helena.jpg",
         "presetId": "helena",
         "warpIntensity": 0.9,
         "headMotionScale": 0.8,
@@ -228,7 +228,7 @@
         "glowIntensity": 0.95
       },
       "visualPhoto": {
-        "portraitUrl": "/avatars/marcus.jpg",
+        "portraitUrl": "avatars/marcus.jpg",
         "presetId": "marcus",
         "warpIntensity": 0.8,
         "headMotionScale": 0.85,
@@ -571,8 +571,21 @@
   ],
   "auditEvents": [
     {
+      "id": "aud-1794726311813-4vts",
+      "timestamp": "2026-11-15T07:05:11.812Z",
+      "avatarId": "avatar-aria-3d",
+      "avatarName": "Aria Vance",
+      "level": 2,
+      "direction": "user_input",
+      "action": "passed",
+      "ruleTriggered": "Nível 2 Aprovado (Sem PII ou Violações)",
+      "originalSnippet": "ola",
+      "sanitizedSnippet": "ola",
+      "complianceScore": 98
+    },
+    {
       "id": "audit-init-1",
-      "timestamp": "2026-11-15T06:36:25.761Z",
+      "timestamp": "2026-11-15T06:51:02.027Z",
       "avatarId": "avatar-aria-3d",
       "avatarName": "Aria Vance",
       "level": 1,
@@ -585,7 +598,7 @@
     },
     {
       "id": "audit-init-2",
-      "timestamp": "2026-11-15T06:42:25.762Z",
+      "timestamp": "2026-11-15T06:57:02.028Z",
       "avatarId": "avatar-helena-photo",
       "avatarName": "Dra. Helena Monteiro",
       "level": 2,
@@ -598,7 +611,7 @@
     },
     {
       "id": "audit-init-3",
-      "timestamp": "2026-11-15T06:47:25.762Z",
+      "timestamp": "2026-11-15T07:02:02.028Z",
       "avatarId": "avatar-aria-3d",
       "avatarName": "Aria Vance",
       "level": 2,
@@ -611,5 +624,5 @@
     }
   ],
   "initialized": true,
-  "updatedAt": "2026-11-15T06:50:26.640Z"
+  "updatedAt": "2026-11-15T07:05:12.605Z"
 }

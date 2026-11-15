@@ -594,21 +594,57 @@ export function App() {
   };
 
   const handleUpdateAvatar = (updated: AvatarProfile) => {
+    const prevVoice = activeAvatar.geminiConfig.voiceName;
     setAvatars((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+
+    // Se o usuário trocou a voz do avatar no Admin, fala imediatamente um teste com a nova voz
+    if (updated.geminiConfig.voiceName !== prevVoice) {
+      audioEngineRef.current?.speakWithVisemes(
+        `Voz alterada para ${updated.geminiConfig.voiceName}. Olá, eu sou ${updated.name}.`,
+        updated.geminiConfig.voiceName,
+        () => {
+          setEmotion('neutral');
+          setGesture('idle');
+        }
+      );
+    }
+  };
+
+  // Troca pelo botão rápido do topo: seleciona o perfil especialista daquele modo (com sua voz própria)
+  const handleQuickTopModeSwitch = (mode: VisualMode) => {
+    const matchingProfile = avatars.find((a) => a.visualMode === mode);
+    if (matchingProfile && matchingProfile.id !== activeAvatar.id) {
+      handleSelectAvatar(matchingProfile.id);
+    } else {
+      handleUpdateAvatar({ ...activeAvatar, visualMode: mode });
+    }
   };
 
   const handleCreateAvatar = () => {
     const newId = `avatar-custom-${Date.now()}`;
+    const voices: AvatarProfile['geminiConfig']['voiceName'][] = [
+      'Aoede',
+      'Kore',
+      'Puck',
+      'Charon',
+      'Fenrir',
+    ];
+    const nextVoice = voices[avatars.length % voices.length];
     const clone: AvatarProfile = {
       ...activeAvatar,
       id: newId,
       name: `Agente Custom #${avatars.length + 1}`,
       roleTitle: 'Especialista Configurável em Tempo Real',
+      geminiConfig: {
+        ...activeAvatar.geminiConfig,
+        voiceName: nextVoice,
+      },
       greetingMessage:
         'Olá! Sou um novo perfil de avatar configurado pelo ambiente de administração.',
     };
     setAvatars((prev) => [...prev, clone]);
     setActiveAvatarId(newId);
+    audioEngineRef.current?.speakWithVisemes(clone.greetingMessage, nextVoice);
   };
 
   const handleDeleteAvatar = (id: string) => {
@@ -684,14 +720,14 @@ export function App() {
           </div>
         </div>
 
-        {/* Troca Rápida dos 4 Modos Visuais direto no Topo */}
-        <div className="quick-mode-switcher" role="group" aria-label="Modo Visual do Avatar">
+        {/* Troca Rápida dos 4 Avatares/Modos Visuais direto no Topo (Com Voz Própria) */}
+        <div className="quick-mode-switcher" role="group" aria-label="Modo Visual e Avatar">
           {(
             [
-              { id: '3d', label: '1. 3D Estilizado' },
-              { id: '2d', label: '2. 2D LiveRig' },
-              { id: 'photorealistic', label: '3. Fotorrealista 2.5D' },
-              { id: 'orb', label: '4. Orbe Partículas' },
+              { id: '3d', label: '1. 3D (Aria • Aoede)' },
+              { id: '2d', label: '2. 2D (Kael • Puck)' },
+              { id: 'photorealistic', label: '3. Foto 2.5D (Helena • Kore)' },
+              { id: 'orb', label: '4. Orbe (NEXUS • Charon)' },
             ] as { id: VisualMode; label: string }[]
           ).map((item) => (
             <button
@@ -701,9 +737,7 @@ export function App() {
               className={`quick-mode-btn ${
                 activeAvatar.visualMode === item.id ? 'active' : ''
               }`}
-              onClick={() =>
-                handleUpdateAvatar({ ...activeAvatar, visualMode: item.id })
-              }
+              onClick={() => handleQuickTopModeSwitch(item.id)}
             >
               {item.label}
             </button>
@@ -777,9 +811,27 @@ export function App() {
                   <Activity size={12} />
                   <span>{liveTelemetry.lastLatencyMs}ms</span>
                 </span>
-                <span className="telemetry-pill">
-                  <span>Voz: {activeAvatar.geminiConfig.voiceName}</span>
-                </span>
+                <button
+                  type="button"
+                  className="telemetry-pill"
+                  style={{ cursor: 'pointer', color: 'var(--accent-cyan)', borderColor: 'rgba(0,240,255,0.35)' }}
+                  onClick={() => {
+                    setEmotion('happy');
+                    setGesture('explain');
+                    audioEngineRef.current?.speakWithVisemes(
+                      activeAvatar.greetingMessage,
+                      activeAvatar.geminiConfig.voiceName,
+                      () => {
+                        setEmotion('neutral');
+                        setGesture('idle');
+                      }
+                    );
+                  }}
+                  title="Toque para ouvir a voz deste avatar"
+                >
+                  <Volume2 size={12} />
+                  <span>Ouvir Voz: {activeAvatar.geminiConfig.voiceName}</span>
+                </button>
                 <span
                   className={`telemetry-pill guardrail-${liveTelemetry.guardrailState}`}
                 >
