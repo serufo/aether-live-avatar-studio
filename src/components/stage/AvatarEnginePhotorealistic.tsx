@@ -273,25 +273,10 @@ export const AvatarEnginePhotorealistic: React.FC<Props> = ({
     };
   }, []);
 
-  const extProvider = avatar.visualPhoto.externalProvider;
-
   return (
     <div className="stage-canvas-layer photorealistic-stage-wrapper">
       <div ref={mountRef} className="stage-canvas-layer" id="avatar-canvas-photorealistic" />
       {avatar.visualPhoto.cinematicVignette && <div className="photorealistic-vignette" />}
-      <div className="photorealistic-engine-badge">
-        <span className="status-dot-live" />
-        {extProvider === 'local_25d' ? (
-          <span>MOTOR NEURAL 2.5D WEBGL • MALHA FACIAL 56×56 ATIVA</span>
-        ) : (
-          <span>
-            CONECTOR STREAMING WEBRTC: {extProvider.toUpperCase()}{' '}
-            {avatar.visualPhoto.externalApiKey
-              ? '• CHAVE CONFIGURADA'
-              : '• FALLBACK 2.5D ATIVO (INSIRA API KEY NO ADMIN)'}
-          </span>
-        )}
-      </div>
     </div>
   );
 };

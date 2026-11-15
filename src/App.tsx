@@ -40,22 +40,17 @@ import {
   Send,
   ShieldCheck,
   ShieldAlert,
-  Sliders,
-  MessageSquareText,
-  Sparkles,
-  BookOpen,
-  Layers,
-  LayoutTemplate,
-  Maximize2,
+  Settings,
+  Play,
   Activity,
 } from 'lucide-react';
 
-type WorkspaceViewMode = 'stage_only' | 'studio_split' | 'embed_preview';
+type ScreenMode = 'live_stage' | 'admin_config';
 
-const STORAGE_KEY = 'aether_live_studio_state_v1';
+const STORAGE_KEY = 'aether_live_studio_state_v2';
 
 export function App() {
-  // Estado Principal Persistente (LocalStorage + API Backend Express)
+  // Estado Principal Persistente
   const [avatars, setAvatars] = useState<AvatarProfile[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -123,9 +118,8 @@ export function App() {
   const activeAvatar =
     avatars.find((a) => a.id === activeAvatarId) || avatars[0];
 
-  // Modos de Visão da Interface
-  const [viewMode, setViewMode] = useState<WorkspaceViewMode>('studio_split');
-  const [showTranscriptDrawer, setShowTranscriptDrawer] = useState<boolean>(true);
+  // Separação clara entre Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
+  const [screenMode, setScreenMode] = useState<ScreenMode>('live_stage');
 
   // Estado Conversacional & Expressões do Avatar em Tempo Real
   const [emotion, setEmotion] = useState<EmotionState>('neutral');
@@ -154,11 +148,11 @@ export function App() {
     detail: string;
   }>({
     state: 'fallback_ready',
-    detail: 'Motor Neural RAG + Sincronia de Visemas Ativo (Pronto para Voz e Texto)',
+    detail: 'Motor Neural RAG + Sincronia de Visemas Ativo',
   });
 
-  // Histórico de Diálogo em Tempo Real
-  const [turns, setTurns] = useState<ConversationTurn[]>(() => [
+  // Histórico de Diálogo (Usado na legenda discreta do palco e no log do Admin)
+  const [, setTurns] = useState<ConversationTurn[]>(() => [
     {
       id: 'turn-welcome',
       timestamp: new Date().toLocaleTimeString('pt-BR', {
@@ -181,7 +175,6 @@ export function App() {
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  // Motores Singletons de Áudio/Visemas e Sessão Gemini Live
   const audioEngineRef = useRef<RealtimeAudioVisemeEngine | null>(null);
   const geminiManagerRef = useRef<GeminiLiveSessionManager | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -253,7 +246,7 @@ export function App() {
             id: `turn-cut-${Date.now()}`,
             timestamp: new Date().toLocaleTimeString('pt-BR'),
             speaker: 'system',
-            text: `[CORTE DE ÁUDIO EM TEMPO REAL — ${reason}]: ${fallbackText}`,
+            text: `[CORTE DE ÁUDIO — ${reason}]: ${fallbackText}`,
             emotion: 'alert',
           },
         ]);
@@ -265,7 +258,7 @@ export function App() {
     };
   }, [geminiApiKey, activeAvatar.id]);
 
-  // Telemetria de Visemas para o HUD a cada 120ms
+  // Telemetria de Visemas a cada 120ms
   useEffect(() => {
     const timer = setInterval(() => {
       const audio = audioEngineRef.current;
@@ -291,7 +284,6 @@ export function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Callback passado aos 4 motores visuais a 60 FPS
   const getVisemes = useCallback((dt: number): VisemeWeights => {
     return (
       audioEngineRef.current?.sampleVisemes(dt) || {
@@ -308,7 +300,6 @@ export function App() {
     );
   }, []);
 
-  // Captura snapshot JPEG da câmera ou tela caso esteja ativa para visão multimodal
   const captureVisionSnapshot = (): string | null => {
     const video = videoPreviewRef.current;
     if (!video || (!cameraActive && !screenActive) || video.videoWidth === 0) {
@@ -323,7 +314,6 @@ export function App() {
     return canvas.toDataURL('image/jpeg', 0.75);
   };
 
-  // Executa um turno completo (Voz ou Texto) com RAG + Guardrails 3 Níveis + Fala Sincronizada
   const handleSendMessage = async (overrideText?: string) => {
     const rawText = (overrideText ?? inputText).trim();
     if (!rawText || isProcessing) return;
@@ -335,7 +325,6 @@ export function App() {
 
     audio.initAudioContext();
 
-    // 1. Verifica Guardrail Nível 2 na entrada do usuário
     const inputGuard = evaluateRealtimeGuardrails(rawText, 'user_input', activeAvatar);
     setAuditEvents((prev) => [inputGuard.auditEvent, ...prev]);
 
@@ -408,7 +397,6 @@ export function App() {
         hasActiveScreen: screenActive,
       });
 
-      // Juiz Semântico Nível 3 Pós-Turno
       if (activeAvatar.guardrails.enableSemanticJudge) {
         const judgeEvent = evaluateSemanticJudge(
           rawText,
@@ -462,7 +450,6 @@ export function App() {
     }
   };
 
-  // Reconhecimento de Voz em Tempo Real (Microfone do Navegador)
   const toggleMicrophone = () => {
     if (isListeningMic) {
       recognitionRef.current?.stop();
@@ -507,7 +494,6 @@ export function App() {
     rec.start();
   };
 
-  // Alternar Webcam Ao Vivo para Visão do Avatar
   const toggleCamera = async () => {
     if (cameraActive) {
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -533,7 +519,6 @@ export function App() {
     }
   };
 
-  // Alternar Compartilhamento de Tela para Visão do Avatar
   const toggleScreenShare = async () => {
     if (screenActive) {
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -597,7 +582,6 @@ export function App() {
     const prevVoice = activeAvatar.geminiConfig.voiceName;
     setAvatars((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
 
-    // Se o usuário trocou a voz do avatar no Admin, fala imediatamente um teste com a nova voz
     if (updated.geminiConfig.voiceName !== prevVoice) {
       audioEngineRef.current?.speakWithVisemes(
         `Voz alterada para ${updated.geminiConfig.voiceName}. Olá, eu sou ${updated.name}.`,
@@ -607,16 +591,6 @@ export function App() {
           setGesture('idle');
         }
       );
-    }
-  };
-
-  // Troca pelo botão rápido do topo: seleciona o perfil especialista daquele modo (com sua voz própria)
-  const handleQuickTopModeSwitch = (mode: VisualMode) => {
-    const matchingProfile = avatars.find((a) => a.visualMode === mode);
-    if (matchingProfile && matchingProfile.id !== activeAvatar.id) {
-      handleSelectAvatar(matchingProfile.id);
-    } else {
-      handleUpdateAvatar({ ...activeAvatar, visualMode: mode });
     }
   };
 
@@ -664,7 +638,6 @@ export function App() {
     setAuditEvents(INITIAL_AUDIT_EVENTS);
   };
 
-  // Renderiza o Motor Visual correspondente à escolha atual (1 das 4 opções)
   const renderActiveAvatarStage = () => {
     switch (activeAvatar.visualMode) {
       case '3d':
@@ -706,301 +679,33 @@ export function App() {
     }
   };
 
-  return (
-    <div className="app-shell">
-      {/* BARRA DE COMANDO SUPERIOR */}
-      <header className="top-command-bar">
-        <div className="brand-cluster">
-          <div className="brand-orb-indicator" />
-          <div>
-            <h1 className="brand-title">AETHER LIVE STUDIO</h1>
-            <span className="brand-subtitle">
-              GEMINI LIVE API • 4 MOTORES VISUAIS • GUARDRAILS & RAG
-            </span>
-          </div>
-        </div>
+  // ============================================================================
+  // TELA 1: PALCO AO VIVO (EXPERIÊNCIA DO USUÁRIO LIMPA: APENAS AVATAR + BARRA)
+  // ============================================================================
+  if (screenMode === 'live_stage') {
+    return (
+      <div className="clean-stage-shell">
+        <h1 className="sr-only">{activeAvatar.name} — Palco Interativo em Tempo Real</h1>
 
-        {/* Troca Rápida dos 4 Avatares/Modos Visuais direto no Topo (Com Voz Própria) */}
-        <div className="quick-mode-switcher" role="group" aria-label="Modo Visual e Avatar">
-          {(
-            [
-              { id: '3d', label: '1. 3D (Aria • Aoede)' },
-              { id: '2d', label: '2. 2D (Kael • Puck)' },
-              { id: 'photorealistic', label: '3. Foto 2.5D (Helena • Kore)' },
-              { id: 'orb', label: '4. Orbe (NEXUS • Charon)' },
-            ] as { id: VisualMode; label: string }[]
-          ).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              id={`top-mode-btn-${item.id}`}
-              className={`quick-mode-btn ${
-                activeAvatar.visualMode === item.id ? 'active' : ''
-              }`}
-              onClick={() => handleQuickTopModeSwitch(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Seletor de Visão (Palco Puro / Studio + Admin / Preview Widget Embed) */}
-        <div className="workspace-view-controls">
-          <button
-            type="button"
-            id="view-mode-stage"
-            className={`view-pill-btn ${viewMode === 'stage_only' ? 'active' : ''}`}
-            onClick={() => setViewMode('stage_only')}
-            title="Palco Imersivo em Tela Cheia"
-          >
-            <Maximize2 size={14} />
-            <span>Palco Ao Vivo</span>
-          </button>
-          <button
-            type="button"
-            id="view-mode-studio"
-            className={`view-pill-btn ${viewMode === 'studio_split' ? 'active' : ''}`}
-            onClick={() => setViewMode('studio_split')}
-            title="Estúdio Completo com Painel Admin"
-          >
-            <Sliders size={14} />
-            <span>Studio + Admin</span>
-          </button>
-          <button
-            type="button"
-            id="view-mode-embed"
-            className={`view-pill-btn ${viewMode === 'embed_preview' ? 'active' : ''}`}
-            onClick={() => setViewMode('embed_preview')}
-            title="Simular Widget Incorporado em Portal Externo"
-          >
-            <LayoutTemplate size={14} />
-            <span>Widget Embed</span>
-          </button>
-        </div>
-      </header>
-
-      {/* CORPO PRINCIPAL DA PLATAFORMA */}
-      <main className={`workspace-main mode-${viewMode}`}>
-        {/* PALCO INTERATIVO EM TEMPO REAL */}
-        <section className="interactive-stage" aria-label="Palco do Avatar Interativo">
-          {/* Renderizador 60 FPS (3D / 2D / Fotorrealista / Orbe) */}
+        {/* Avatar em Tela Cheia 100dvh */}
+        <main className="clean-stage-viewport" aria-label="Palco do Avatar Interativo">
           {renderActiveAvatarStage()}
 
-          {/* Seletor Rápido de Perfis & Telemetria (Canto Superior Esquerdo do Palco) */}
-          <div className="stage-top-left-hud">
-            <div className="active-avatar-card-glass">
-              <div className="avatar-selector-row">
-                <Layers size={15} className="cyan-icon" />
-                <select
-                  id="stage-avatar-profile-select"
-                  className="stage-profile-select"
-                  value={activeAvatar.id}
-                  onChange={(e) => handleSelectAvatar(e.target.value)}
-                >
-                  {avatars.map((av) => (
-                    <option key={av.id} value={av.id}>
-                      {av.name} ({av.visualMode.toUpperCase()})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <span className="stage-avatar-role">{activeAvatar.roleTitle}</span>
-
-              <div className="telemetry-badges-row">
-                <span className="telemetry-pill">
-                  <Activity size={12} />
-                  <span>{liveTelemetry.lastLatencyMs}ms</span>
-                </span>
-                <button
-                  type="button"
-                  className="telemetry-pill"
-                  style={{ cursor: 'pointer', color: 'var(--accent-cyan)', borderColor: 'rgba(0,240,255,0.35)' }}
-                  onClick={() => {
-                    setEmotion('happy');
-                    setGesture('explain');
-                    audioEngineRef.current?.speakWithVisemes(
-                      activeAvatar.greetingMessage,
-                      activeAvatar.geminiConfig.voiceName,
-                      () => {
-                        setEmotion('neutral');
-                        setGesture('idle');
-                      }
-                    );
-                  }}
-                  title="Toque para ouvir a voz deste avatar"
-                >
-                  <Volume2 size={12} />
-                  <span>Ouvir Voz: {activeAvatar.geminiConfig.voiceName}</span>
-                </button>
-                <span
-                  className={`telemetry-pill guardrail-${liveTelemetry.guardrailState}`}
-                >
-                  {liveTelemetry.guardrailState === 'blocked' ? (
-                    <ShieldAlert size={12} />
-                  ) : (
-                    <ShieldCheck size={12} />
-                  )}
-                  <span>
-                    {liveTelemetry.guardrailState === 'blocked'
-                      ? 'VIOLAÇÃO BLOQUEADA'
-                      : liveTelemetry.guardrailState === 'masked'
-                      ? 'PII ANONIMIZADO'
-                      : 'GUARDRAILS 3-NÍVEIS OK'}
-                  </span>
-                </span>
-              </div>
-
-              {/* Barra de Energia Vocal e Visemas em Tempo Real */}
-              <div className="viseme-meter-row">
-                <span className="mono-label">
-                  VISEMA: {isSpeaking ? liveTelemetry.band.toUpperCase() : 'IDLE'}
-                </span>
-                <div className="viseme-bar-track">
-                  <div
-                    className="viseme-bar-fill"
-                    style={{ width: `${Math.min(100, liveTelemetry.jaw)}%` }}
-                  />
-                </div>
-                <span className="mono-label">{liveTelemetry.jaw}%</span>
-              </div>
-
-              {/* Botões Rápidos de Expressão e Gesto em Tempo Real */}
-              <div className="expression-quick-bar">
-                {(
-                  [
-                    { em: 'neutral', gs: 'idle', label: 'Neutro' },
-                    { em: 'happy', gs: 'wave', label: 'Feliz / Acenar' },
-                    { em: 'thinking', gs: 'explain', label: 'Pensando' },
-                    { em: 'surprised', gs: 'emphasis', label: 'Surpreso' },
-                    { em: 'alert', gs: 'emphasis', label: 'Alerta Guardrail' },
-                  ] as { em: EmotionState; gs: GestureState; label: string }[]
-                ).map((btn) => (
-                  <button
-                    key={btn.em}
-                    type="button"
-                    className={`exp-chip ${emotion === btn.em ? 'active' : ''}`}
-                    onClick={() => {
-                      setEmotion(btn.em);
-                      setGesture(btn.gs);
-                    }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Picture-in-Picture de Webcam / Screen Share quando ativo */}
-            {(cameraActive || screenActive) && (
-              <div className="vision-pip-card">
-                <div className="vision-pip-header">
-                  <span className="status-dot-live" />
-                  <span>
-                    {cameraActive
-                      ? 'VISÃO WEBCAM GEMINI LIVE'
-                      : 'VISÃO DE TELA COMPARTILHADA'}
-                  </span>
-                </div>
-                <video
-                  ref={videoPreviewRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="vision-pip-video"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* GAVETA FLUTUANTE DE TRANSCRIÇÃO, CITAÇÕES RAG E PROMPTS SUGERIDOS */}
-          {showTranscriptDrawer && (
-            <div className="stage-transcript-drawer" id="stage-transcript-drawer">
-              <div className="transcript-drawer-header">
-                <div className="transcript-header-title">
-                  <MessageSquareText size={15} />
-                  <span>Diálogo em Tempo Real & Citações RAG</span>
-                </div>
-                <button
-                  type="button"
-                  className="btn-ghost-xs"
-                  onClick={() => setShowTranscriptDrawer(false)}
-                >
-                  Ocultar
-                </button>
-              </div>
-
-              <div className="transcript-messages-list">
-                {turns.map((turn) => (
-                  <div
-                    key={turn.id}
-                    className={`turn-bubble speaker-${turn.speaker} ${
-                      turn.emotion === 'alert' ? 'turn-alert' : ''
-                    }`}
-                  >
-                    <div className="turn-meta">
-                      <strong>
-                        {turn.speaker === 'user'
-                          ? 'Você'
-                          : turn.speaker === 'avatar'
-                          ? activeAvatar.name
-                          : 'Guardrail Interceptor'}
-                      </strong>
-                      <span>
-                        {turn.timestamp}
-                        {turn.latencyMs ? ` • ${turn.latencyMs}ms` : ''}
-                      </span>
-                    </div>
-                    <p className="turn-text">{turn.text}</p>
-
-                    {/* Citações da Base de Conhecimento (RAG) */}
-                    {turn.citations && turn.citations.length > 0 && (
-                      <div className="turn-citations">
-                        {turn.citations.map((cit) => (
-                          <div key={cit.chunkId} className="citation-chip">
-                            <BookOpen size={12} />
-                            <span>
-                              Fonte RAG: <strong>{cit.docTitle}</strong> (
-                              {Math.round(cit.score * 100)}% match)
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Alerta de Guardrail Acionado no Turno */}
-                    {turn.guardrailEvent && turn.guardrailEvent.action !== 'passed' && (
-                      <div className="turn-guardrail-banner">
-                        <ShieldAlert size={13} />
-                        <span>{turn.guardrailEvent.ruleTriggered}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Sugestões de Teste Rápido (RAG + Guardrails) */}
-              <div className="suggested-prompts-bar">
-                <span className="sub-eyebrow">
-                  <Sparkles size={11} /> TESTAR DIÁLOGO, RAG OU GUARDRAILS:
-                </span>
-                <div className="suggested-chips-scroll">
-                  {activeAvatar.suggestedPrompts.map((prompt, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className="suggested-prompt-chip"
-                      onClick={() => handleSendMessage(prompt)}
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* PiP Discreto de Câmera/Tela somente quando o usuário ativar */}
+          {(cameraActive || screenActive) && (
+            <div className="clean-vision-pip">
+              <video
+                ref={videoPreviewRef}
+                autoPlay
+                playsInline
+                muted
+                className="vision-pip-video"
+              />
             </div>
           )}
 
-          {/* DOCK FLUTUANTE INFERIOR DE CONTROLE MULTIMODAL */}
-          <div className="stage-bottom-hud-dock">
+          {/* Apenas a Barra Inferior Fluida de Interação */}
+          <div className="stage-bottom-hud-dock clean-dock">
             <div className="hud-controls-cluster">
               <button
                 type="button"
@@ -1017,7 +722,7 @@ export function App() {
                 id="btn-toggle-camera"
                 className={`hud-round-btn ${cameraActive ? 'cam-active' : ''}`}
                 onClick={toggleCamera}
-                title="Compartilhar Webcam com o Avatar (Gemini Live Vision)"
+                title="Compartilhar Câmera com o Avatar"
               >
                 {cameraActive ? <Video size={18} /> : <VideoOff size={18} />}
               </button>
@@ -1041,7 +746,7 @@ export function App() {
                   setIsMuted(next);
                   audioEngineRef.current?.setMuted(next);
                 }}
-                title={isMuted ? 'Ativar Voz do Avatar' : 'Silenciar Voz do Avatar'}
+                title={isMuted ? 'Ativar Som' : 'Silenciar'}
               >
                 {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
               </button>
@@ -1056,10 +761,10 @@ export function App() {
                     setIsSpeaking(false);
                     setGesture('idle');
                   }}
-                  title="Cortar a fala do avatar imediatamente (Interrupt)"
+                  title="Interromper Fala"
                 >
                   <Square size={13} />
-                  <span>Cortar Fala</span>
+                  <span>Parar</span>
                 </button>
               )}
             </div>
@@ -1075,7 +780,7 @@ export function App() {
                 type="text"
                 id="stage-chat-input"
                 className="hud-prompt-input"
-                placeholder={`Converse com ${activeAvatar.name} em tempo real (voz ou texto)...`}
+                placeholder={`Converse com ${activeAvatar.name}...`}
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
               />
@@ -1090,82 +795,182 @@ export function App() {
               </button>
             </form>
 
-            {!showTranscriptDrawer && (
-              <button
-                type="button"
-                className="hud-round-btn"
-                onClick={() => setShowTranscriptDrawer(true)}
-                title="Abrir Transcrição e Citações RAG"
-              >
-                <MessageSquareText size={18} />
-              </button>
-            )}
+            <button
+              type="button"
+              id="btn-open-admin-studio"
+              className="hud-round-btn"
+              onClick={() => setScreenMode('admin_config')}
+              title="Abrir Tela de Configuração (Admin)"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // TELA 2: AMBIENTE DE ADMINISTRAÇÃO & CALIBRAGEM (TELA DEDICADA DE CONFIG)
+  // ============================================================================
+  return (
+    <div className="app-shell admin-screen-shell">
+      <header className="top-command-bar">
+        <div className="brand-cluster">
+          <div className="brand-orb-indicator" />
+          <div>
+            <h1 className="brand-title">AMBIENTE DE ADMINISTRAÇÃO // AETHER STUDIO</h1>
+            <span className="brand-subtitle">
+              CONFIGURAÇÃO DE PERFIS • 4 MOTORES VISUAIS • RAG • GUARDRAILS & GEMINI LIVE
+            </span>
+          </div>
+        </div>
+
+        {/* Troca Rápida do Perfil/Modo em Calibragem */}
+        <div className="quick-mode-switcher" role="group" aria-label="Modo Visual do Avatar">
+          {(
+            [
+              { id: '3d', label: '1. 3D (Aria)' },
+              { id: '2d', label: '2. 2D (Kael)' },
+              { id: 'photorealistic', label: '3. Foto 2.5D (Helena)' },
+              { id: 'orb', label: '4. Orbe (NEXUS)' },
+            ] as { id: VisualMode; label: string }[]
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`quick-mode-btn ${
+                activeAvatar.visualMode === item.id ? 'active' : ''
+              }`}
+              onClick={() => {
+                const matchingProfile = avatars.find((a) => a.visualMode === item.id);
+                if (matchingProfile && matchingProfile.id !== activeAvatar.id) {
+                  handleSelectAvatar(matchingProfile.id);
+                } else {
+                  handleUpdateAvatar({ ...activeAvatar, visualMode: item.id });
+                }
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          id="btn-return-live-stage"
+          className="btn-launch-stage"
+          onClick={() => setScreenMode('live_stage')}
+        >
+          <Play size={15} />
+          <span>Ir para o Palco Ao Vivo</span>
+        </button>
+      </header>
+
+      <main className="admin-dedicated-layout">
+        {/* Coluna Esquerda do Admin: Monitor de Calibragem & Telemetria do Avatar */}
+        <section className="admin-calibration-monitor">
+          <div className="calibration-stage-box">
+            {renderActiveAvatarStage()}
           </div>
 
-          {/* MODO PREVIEW DE PORTAL EXTERNO (WIDGET EMBED) */}
-          {viewMode === 'embed_preview' && (
-            <div className="embed-portal-backdrop">
-              <div className="embed-portal-mockup">
-                <span className="admin-eyebrow">SIMULAÇÃO DE PORTAL CORPORATIVO DO CLIENTE</span>
-                <h2>Portal Institucional Integrado ao Widget Aether Live</h2>
-                <p>
-                  No modo <strong>Widget Embed</strong>, seu avatar configurado no Admin (
-                  <strong>{activeAvatar.name}</strong> • modo{' '}
-                  <code>{activeAvatar.visualMode.toUpperCase()}</code>) opera com a mesma
-                  Base de Conhecimento RAG e os mesmos 3 níveis de Guardrails dentro de
-                  qualquer site externo.
-                </p>
-                <div className="embed-metrics-cards">
-                  <div className="embed-metric">
-                    <strong>4 Motores</strong>
-                    <span>3D, 2D, Foto 2.5D e Orbe prontos no mesmo SDK</span>
-                  </div>
-                  <div className="embed-metric">
-                    <strong>Guardrails 3-Tier</strong>
-                    <span>Proteção ativa contra PII e Prompt Injection</span>
-                  </div>
-                  <div className="embed-metric">
-                    <strong>RAG Nativo</strong>
-                    <span>Documentos sincronizados em tempo real pelo Admin</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn-accent-sm"
-                  onClick={() => setViewMode('studio_split')}
-                >
-                  Voltar ao Estúdio + Admin Completo
-                </button>
-              </div>
+          <div className="calibration-telemetry-bar">
+            <div className="telemetry-badges-row">
+              <span className="telemetry-pill">
+                <Activity size={12} />
+                <span>Latência: {liveTelemetry.lastLatencyMs}ms</span>
+              </span>
+              <button
+                type="button"
+                className="telemetry-pill"
+                style={{
+                  cursor: 'pointer',
+                  color: 'var(--accent-cyan)',
+                  borderColor: 'rgba(0,240,255,0.35)',
+                }}
+                onClick={() => {
+                  setEmotion('happy');
+                  setGesture('explain');
+                  audioEngineRef.current?.speakWithVisemes(
+                    activeAvatar.greetingMessage,
+                    activeAvatar.geminiConfig.voiceName,
+                    () => {
+                      setEmotion('neutral');
+                      setGesture('idle');
+                    }
+                  );
+                }}
+              >
+                <Volume2 size={12} />
+                <span>Testar Voz: {activeAvatar.geminiConfig.voiceName}</span>
+              </button>
+              <span
+                className={`telemetry-pill guardrail-${liveTelemetry.guardrailState}`}
+              >
+                {liveTelemetry.guardrailState === 'blocked' ? (
+                  <ShieldAlert size={12} />
+                ) : (
+                  <ShieldCheck size={12} />
+                )}
+                <span>
+                  {liveTelemetry.guardrailState === 'blocked'
+                    ? 'VIOLAÇÃO BLOQUEADA'
+                    : liveTelemetry.guardrailState === 'masked'
+                    ? 'PII ANONIMIZADO'
+                    : 'GUARDRAILS ATIVOS'}
+                </span>
+              </span>
             </div>
-          )}
+
+            <div className="expression-quick-bar">
+              {(
+                [
+                  { em: 'neutral', gs: 'idle', label: 'Neutro' },
+                  { em: 'happy', gs: 'wave', label: 'Feliz / Acenar' },
+                  { em: 'thinking', gs: 'explain', label: 'Pensando' },
+                  { em: 'surprised', gs: 'emphasis', label: 'Surpreso' },
+                  { em: 'alert', gs: 'emphasis', label: 'Alerta Guardrail' },
+                ] as { em: EmotionState; gs: GestureState; label: string }[]
+              ).map((btn) => (
+                <button
+                  key={btn.em}
+                  type="button"
+                  className={`exp-chip ${emotion === btn.em ? 'active' : ''}`}
+                  onClick={() => {
+                    setEmotion(btn.em);
+                    setGesture(btn.gs);
+                  }}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
-        {/* PAINEL DE ADMINISTRAÇÃO LATERAL (QUANDO EM STUDIO SPLIT) */}
-        {viewMode === 'studio_split' && (
-          <AdminStudioPanel
-            avatars={avatars}
-            activeAvatar={activeAvatar}
-            documents={documents}
-            auditEvents={auditEvents}
-            geminiApiKey={geminiApiKey}
-            liveWsStatus={liveWsStatus}
-            onSelectAvatar={handleSelectAvatar}
-            onUpdateAvatar={handleUpdateAvatar}
-            onCreateAvatar={handleCreateAvatar}
-            onDeleteAvatar={handleDeleteAvatar}
-            onResetDefaults={handleResetDefaults}
-            onAddDocument={(doc) => setDocuments((prev) => [doc, ...prev])}
-            onUpdateDocument={(doc) =>
-              setDocuments((prev) => prev.map((d) => (d.id === doc.id ? doc : d)))
-            }
-            onDeleteDocument={(docId) =>
-              setDocuments((prev) => prev.filter((d) => d.id !== docId))
-            }
-            onChangeGeminiApiKey={setGeminiApiKey}
-            onTestPromptOnStage={(promptText) => handleSendMessage(promptText)}
-          />
-        )}
+        {/* Coluna Direita do Admin: Painel Completo de Configuração (5 Abas) */}
+        <AdminStudioPanel
+          avatars={avatars}
+          activeAvatar={activeAvatar}
+          documents={documents}
+          auditEvents={auditEvents}
+          geminiApiKey={geminiApiKey}
+          liveWsStatus={liveWsStatus}
+          onSelectAvatar={handleSelectAvatar}
+          onUpdateAvatar={handleUpdateAvatar}
+          onCreateAvatar={handleCreateAvatar}
+          onDeleteAvatar={handleDeleteAvatar}
+          onResetDefaults={handleResetDefaults}
+          onAddDocument={(doc) => setDocuments((prev) => [doc, ...prev])}
+          onUpdateDocument={(doc) =>
+            setDocuments((prev) => prev.map((d) => (d.id === doc.id ? doc : d)))
+          }
+          onDeleteDocument={(docId) =>
+            setDocuments((prev) => prev.filter((d) => d.id !== docId))
+          }
+          onChangeGeminiApiKey={setGeminiApiKey}
+          onTestPromptOnStage={(promptText) => handleSendMessage(promptText)}
+        />
       </main>
     </div>
   );
