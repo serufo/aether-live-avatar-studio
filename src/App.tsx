@@ -47,7 +47,7 @@ import {
 
 type ScreenMode = 'live_stage' | 'admin_config';
 
-const STORAGE_KEY = 'aether_live_studio_state_v3';
+const STORAGE_KEY = 'aether_live_studio_state_v4';
 
 export function App() {
   // Estado Principal Persistente
@@ -174,8 +174,8 @@ export function App() {
     detail: 'Motor Neural RAG + Sincronia de Visemas Ativo',
   });
 
-  // Histórico de Diálogo (Usado na legenda discreta do palco e no log do Admin)
-  const [, setTurns] = useState<ConversationTurn[]>(() => [
+  // Histórico de Diálogo (Usado para memória de contexto da conversa)
+  const [turns, setTurns] = useState<ConversationTurn[]>(() => [
     {
       id: 'turn-welcome',
       timestamp: new Date().toLocaleTimeString('pt-BR', {
@@ -418,6 +418,7 @@ export function App() {
         visionFrameBase64: visionSnapshot,
         hasActiveCamera: cameraActive,
         hasActiveScreen: screenActive,
+        recentTurns: turns.slice(-8),
       });
 
       if (activeAvatar.guardrails.enableSemanticJudge) {

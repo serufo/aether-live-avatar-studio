@@ -169,8 +169,8 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     },
     guardrails: {
       systemRolePrompt:
-        'Você é a Dra. Helena Monteiro, especialista em Governança Clínica e LGPD na Saúde. Responda de forma acolhedora, natural e muito objetiva em 1 ou 2 frases curtas, sem citar nomes de documentos ou protocolos e sem realizar prescrição médica.',
-      strictKnowledgeGrounding: true,
+        'Você é a Dra. Helena Monteiro, especialista em Governança Clínica e LGPD na Saúde. Converse de forma humana, acolhedora e direta, respondendo exatamente ao que o usuário perguntar em 1 ou 2 frases curtas, sem citar nomes de documentos e sem realizar prescrição médica.',
+      strictKnowledgeGrounding: false,
       allowedTopics: [
         'Compliance LGPD na Saúde',
         'Governança de IA Clínica',

@@ -880,6 +880,7 @@ export class GeminiLiveSessionManager {
     visionFrameBase64?: string | null;
     hasActiveCamera: boolean;
     hasActiveScreen: boolean;
+    recentTurns?: Array<{ speaker: 'user' | 'avatar' | 'system'; text: string }>;
   }): Promise<{
     replyText: string;
     citations: RagCitation[];
@@ -890,8 +891,15 @@ export class GeminiLiveSessionManager {
     modeUsed: 'gemini_live_ws' | 'gemini_rest' | 'sandbox_neural';
   }> {
     const t0 = performance.now();
-    const { userText, avatar, documents, visionFrameBase64, hasActiveCamera, hasActiveScreen } =
-      params;
+    const {
+      userText,
+      avatar,
+      documents,
+      visionFrameBase64,
+      hasActiveCamera,
+      hasActiveScreen,
+      recentTurns = [],
+    } = params;
 
     const inputGuard = evaluateRealtimeGuardrails(userText, 'user_input', avatar);
     if (!inputGuard.allowed) {
@@ -913,13 +921,45 @@ export class GeminiLiveSessionManager {
       const systemInstruction = compileSystemInstruction(avatar, documents);
       const ragContextText =
         citations.length > 0
-          ? `\n\n[CONHECIMENTO INTERNO RELEVANTE (use os fatos naturalmente em até ${maxSentences} frases curtas, SEM citar documento ou fonte)]:\n` +
+          ? `\n\n[FATOS DE APOIO RELACIONADOS (use apenas se ajudar a responder diretamente à pergunta do usuário, em até ${maxSentences} frases curtas e sem citar fonte)]:\n` +
             citations.map((c) => c.excerpt).join('\n\n')
-          : `\n\n[Responda de forma natural, direta e objetiva em até ${maxSentences} frases curtas, sem citar fontes.]`;
+          : `\n\n[Instrução: Responda diretamente ao que o usuário perguntou em até ${maxSentences} frases curtas e naturais.]`;
+
+      // Constrói histórico recente do diálogo para manter contexto real da conversa
+      const historyContents: Array<{
+        role: 'user' | 'model';
+        parts: Array<Record<string, unknown>>;
+      }> = [];
+
+      const validHistory = recentTurns
+        .filter((t) => (t.speaker === 'user' || t.speaker === 'avatar') && t.text.trim().length > 0)
+        .slice(-6);
+
+      for (const turn of validHistory) {
+        const role = turn.speaker === 'user' ? 'user' : 'model';
+        const prev = historyContents[historyContents.length - 1];
+        if (prev && prev.role === role) {
+          prev.parts[0].text = `${prev.parts[0].text} ${turn.text}`;
+        } else {
+          historyContents.push({
+            role,
+            parts: [{ text: turn.text }],
+          });
+        }
+      }
+
+      // Garante que o histórico comece com 'user' conforme exigido pela API Gemini
+      while (historyContents.length > 0 && historyContents[0].role !== 'user') {
+        historyContents.shift();
+      }
+      // Se o último item do histórico for 'user', mescla ou remove para adicionar a pergunta atual
+      if (historyContents.length > 0 && historyContents[historyContents.length - 1].role === 'user') {
+        historyContents.pop();
+      }
 
       const userParts: Array<Record<string, unknown>> = [
         {
-          text: `${inputGuard.sanitizedText}${ragContextText}`,
+          text: `Pergunta do usuário: "${inputGuard.sanitizedText}"${ragContextText}`,
         },
       ];
 
@@ -932,9 +972,23 @@ export class GeminiLiveSessionManager {
         });
       }
 
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+      historyContents.push({
+        role: 'user',
+        parts: userParts,
+      });
+
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
       for (const modelId of candidateModels) {
         try {
+          const is25 = modelId.startsWith('gemini-2.5');
+          const generationConfig: Record<string, unknown> = {
+            temperature: avatar.geminiConfig.temperature,
+            maxOutputTokens: 380,
+          };
+          if (is25) {
+            generationConfig.thinkingConfig = { thinkingBudget: 0 };
+          }
+
           const resp = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(
               this.apiKey
@@ -944,19 +998,23 @@ export class GeminiLiveSessionManager {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemInstruction }] },
-                contents: [{ role: 'user', parts: userParts }],
-                generationConfig: {
-                  temperature: avatar.geminiConfig.temperature,
-                  maxOutputTokens: 130,
-                },
+                contents: historyContents,
+                generationConfig,
               }),
             }
           );
 
           if (resp.ok) {
             const data = await resp.json();
-            const rawReply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (rawReply.trim()) {
+            const parts: Array<Record<string, unknown>> =
+              data?.candidates?.[0]?.content?.parts || [];
+            const rawReply = parts
+              .filter((p) => !p?.thought && typeof p?.text === 'string')
+              .map((p) => String(p.text))
+              .join(' ')
+              .trim();
+
+            if (rawReply) {
               const naturalReply = formatNaturalSpokenReply(rawReply, maxSentences);
               const outGuard = evaluateRealtimeGuardrails(naturalReply, 'avatar_output', avatar);
               return {

@@ -105,7 +105,32 @@ export function ensureDocumentChunks(doc: KnowledgeDocument): KnowledgeDocument 
   };
 }
 
-// Busca Semântica + Léxica (BM25 + Trigram Jaccard/Cosine) na Base de Conhecimento do Avatar
+const SEMANTIC_SYNONYM_GROUPS: string[][] = [
+  ['sla', 'disponibilidade', 'uptime', 'queda', 'estabilidade', 'ar', 'online', 'garantia'],
+  ['latencia', 'velocidade', 'rapido', 'tempo', 'atraso', 'demora', 'resposta', 'milissegundos', 'ms'],
+  ['voz', 'audio', 'fala', 'boca', 'visema', 'labial', 'sincronia', 'som', 'microfone', 'fft'],
+  ['lgpd', 'lei', 'dados', 'privacidade', 'paciente', 'saude', 'clinica', 'hospital', 'artigo', 'sensivel', 'sensiveis'],
+  ['prontuario', 'historico', 'guardar', 'retencao', 'prazo', 'anos', 'tempo', 'arquivar', 'anonimizacao', 'cpf'],
+  ['receita', 'remedio', 'medicamento', 'prescricao', 'prescrever', 'consulta', 'diagnostico', 'medico'],
+  ['incidente', 'ataque', 'invasao', 'hacker', 'ddos', 'soc', 'mttr', 'mttd', 'contencao', 'resposta', 'critico'],
+  ['zerotrust', 'zero', 'trust', 'mtls', 'pod', 'container', 'isolamento', 'rede', 'certificado', 'seguranca'],
+  ['risco', 'var', 'perda', 'carteira', 'fundo', 'limite', 'volatilidade', 'alavancagem', 'stress'],
+  ['liquidez', 'caixa', 'dinheiro', 'ativo', 'soberano', 'resgate', 'colchao'],
+];
+
+function expandQueryTerms(terms: string[]): string[] {
+  const expanded = new Set<string>(terms);
+  for (const t of terms) {
+    for (const group of SEMANTIC_SYNONYM_GROUPS) {
+      if (group.some((g) => g.includes(t) || t.includes(g))) {
+        for (const syn of group) expanded.add(syn);
+      }
+    }
+  }
+  return Array.from(expanded);
+}
+
+// Busca Semântica + Léxica (BM25 + Expansão de Sinônimos de Domínio) na Base de Conhecimento do Avatar
 export function searchKnowledgeBase(
   query: string,
   avatarId: string,
@@ -116,8 +141,9 @@ export function searchKnowledgeBase(
     .filter((d) => d.avatarId === avatarId)
     .map(ensureDocumentChunks);
 
-  const queryTerms = extractTerms(query);
-  if (queryTerms.length === 0) return [];
+  const rawTerms = extractTerms(query);
+  if (rawTerms.length === 0) return [];
+  const expandedTerms = expandQueryTerms(rawTerms);
 
   const results: RagCitation[] = [];
 
@@ -130,9 +156,9 @@ export function searchKnowledgeBase(
       let matchedTerms = 0;
       let exactSubstringBoost = 0;
 
-      for (const qTerm of queryTerms) {
+      for (const qTerm of rawTerms) {
         if (chunkNorm.includes(qTerm)) {
-          matchedTerms += 1.25;
+          matchedTerms += 1.4;
         } else if (
           chunkTerms.some(
             (ct) =>
@@ -140,17 +166,23 @@ export function searchKnowledgeBase(
               qTerm.startsWith(ct.slice(0, Math.max(4, ct.length - 2)))
           )
         ) {
-          matchedTerms += 0.85;
+          matchedTerms += 0.95;
         }
         if (titleNorm.includes(qTerm)) {
           exactSubstringBoost += 0.35;
         }
       }
 
-      const coverage = matchedTerms / Math.max(1, queryTerms.length);
-      const rawScore = Math.min(0.99, coverage * 0.72 + exactSubstringBoost);
+      for (const synTerm of expandedTerms) {
+        if (!rawTerms.includes(synTerm) && chunkNorm.includes(synTerm)) {
+          matchedTerms += 0.45;
+        }
+      }
 
-      if (rawScore >= 0.22) {
+      const coverage = matchedTerms / Math.max(1, rawTerms.length);
+      const rawScore = Math.min(0.99, coverage * 0.68 + exactSubstringBoost);
+
+      if (rawScore >= 0.18) {
         results.push({
           chunkId: chunk.id,
           docId: doc.id,
@@ -208,19 +240,12 @@ export function compileSystemInstruction(
     `Você é ${avatar.name}, ${avatar.roleTitle}.`,
     `${g.systemRolePrompt}`,
     ``,
-    `=== REGRAS OBRIGATÓRIAS DE FALA NATURAL E OBJETIVIDADE ===`,
-    `- Idioma: ${g.responseLanguage}. Tom: ${formalityDesc}, ${empathyDesc}.`,
-    `- SEJA CURTO E DIRETO: Responda em no máximo ${maxSentences} frases curtas (idealmente de 15 a 35 palavras no total). Vá direto ao ponto.`,
-    `- PROIBIDO CITAR FONTES: JAMAIS diga "Com base no documento...", "Segundo a base de conhecimento...", "De acordo com o manual/protocolo..." ou mencione nomes de arquivos. Fale com naturalidade, como conhecimento próprio.`,
-    `- TEXTO PURO PARA VOZ: Não use listas, tópicos, asteriscos ou markdown. Escreva exatamente como uma pessoa real falaria em voz alta.`,
-    `- Escopo: ${
-      g.strictKnowledgeGrounding
-        ? 'Responda apenas sobre fatos presentes no seu conhecimento interno. Se algo fugir do escopo, diga de forma curta e educada que atua apenas em ' +
-          g.allowedTopics.slice(0, 2).join(' e ') +
-          '.'
-        : 'Priorize os fatos e métricas do seu conhecimento interno com naturalidade.'
-    }`,
-    `- Tópicos Proibidos (NUNCA aborde): ${g.blockedTopics.join(', ') || 'Nenhum'}`,
+    `=== REGRAS OBRIGATÓRIAS DE DIÁLOGO E RESPOSTA AO USUÁRIO ===`,
+    `1. RESPONDA DIRETAMENTE AO QUE O USUÁRIO PERGUNTOU: Sua prioridade absoluta é entender a pergunta, dúvida ou comentário específico do usuário e responder diretamente a ele. NUNCA ignore a pergunta do usuário e NUNCA dê respostas evasivas ou genéricas como "Posso ajudar com X e Y, o que gostaria de saber?".`,
+    `2. USE SEU CONHECIMENTO COM NATURALIDADE: Quando a pergunta envolver métricas, prazos, regras ou conceitos do seu domínio, use os fatos abaixo de forma natural na resposta. Se o usuário pedir uma explicação prática, um exemplo, uma opinião técnica ou fizer uma pergunta aberta/cotidiana, responda de forma inteligente e prestativa mantendo sua persona.`,
+    `3. CURTO E OBJETIVO: Responda em ${maxSentences} frases curtas e diretas (cerca de 15 a 40 palavras), no idioma ${g.responseLanguage}, com tom ${formalityDesc} e ${empathyDesc}.`,
+    `4. SEM CITAR FONTES OU MARKDOWN: JAMAIS diga "Com base no documento...", "Segundo a base de conhecimento..." ou "De acordo com o manual...". Não use listas, tópicos ou asteriscos; fale como uma pessoa real conversando ao vivo.`,
+    `- Tópicos Proibidos (recuse educadamente se solicitado): ${g.blockedTopics.join(', ') || 'Nenhum'}`,
     directContextBlock,
     ragCatalogBlock,
   ]
@@ -635,17 +660,33 @@ export function synthesizeGroundedResponse(
   }
 
   let coreAnswer = '';
+  const qNorm = normalizeText(cleanQuery);
+  const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
 
   if (citations.length > 0) {
     coreAnswer = extractConciseFactFromChunk(citations[0].excerpt, cleanQuery, maxSent);
+  } else if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|e ai)\b/.test(qNorm)) {
+    coreAnswer = `Olá! Tudo ótimo por aqui. Sou ${avatar.name}, como posso te ajudar com a sua dúvida?`;
+  } else if (/quem e voce|seu nome|o que voce faz|qual seu papel|sua funcao|apresente/.test(qNorm)) {
+    coreAnswer = `Sou ${avatar.name}, ${avatar.roleTitle}. Atuo com foco em ${avatar.guardrails.allowedTopics
+      .slice(0, 2)
+      .join(' e ')}.`;
+  } else if (/obrigad|valeu|perfeito|entendi|otimo|legal|excelente/.test(qNorm)) {
+    coreAnswer = `Por nada! Se surgir mais alguma dúvida, é só me chamar.`;
+  } else if (/exemplo|pratica|explica|melhor|detalh|como funciona|resum/.test(qNorm) && avatarDocs.length > 0) {
+    const combinedText = avatarDocs.map((d) => d.content).join('\n');
+    coreAnswer = extractConciseFactFromChunk(combinedText, cleanQuery, maxSent);
+  } else if (avatarDocs.length > 0 && !avatar.guardrails.strictKnowledgeGrounding) {
+    const combinedText = avatarDocs.map((d) => d.content).join('\n');
+    coreAnswer = extractConciseFactFromChunk(combinedText, cleanQuery, maxSent);
   } else if (avatar.guardrails.strictKnowledgeGrounding) {
-    coreAnswer = `Não tenho essa informação específica registrada, mas posso ajudar com dúvidas sobre ${avatar.guardrails.allowedTopics
+    coreAnswer = `Sobre "${cleanQuery.slice(0, 45)}", não tenho esse detalhe específico registrado, mas posso esclarecer pontos de ${avatar.guardrails.allowedTopics
       .slice(0, 2)
       .join(' ou ')}.`;
   } else {
-    coreAnswer = `Posso ajudar você com ${avatar.guardrails.allowedTopics
+    coreAnswer = `Sobre isso, atuamos com foco direto em ${avatar.guardrails.allowedTopics
       .slice(0, 2)
-      .join(' e ')}. O que gostaria de saber?`;
+      .join(' e ')}. Quer que eu detalhe algum ponto específico?`;
   }
 
   const finalReply = formatNaturalSpokenReply(`${prefixPII}${visionNote}${coreAnswer}`, maxSent);
