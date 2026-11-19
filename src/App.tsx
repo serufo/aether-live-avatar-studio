@@ -35,6 +35,12 @@ import { AvatarEngineOrb } from './components/stage/AvatarEngineOrb';
 import { AdminStudioPanel } from './components/admin/AdminStudioPanel';
 import { AetherSplashScreen } from './components/splash/AetherSplashScreen';
 import { APP_DEV_VERSION_LABEL } from './config/version';
+import { PacificRWorkspace } from './components/pacificR/PacificRWorkspace';
+import {
+  getAppBasePath,
+  getPacificRPath,
+  isPacificRRoute,
+} from './utils/appRoutes';
 import {
   Mic,
   MicOff,
@@ -57,9 +63,10 @@ import {
   Captions,
   RotateCcw,
   Users,
+  FlaskConical,
 } from 'lucide-react';
 
-type ScreenMode = 'live_stage' | 'admin_config';
+type ScreenMode = 'live_stage' | 'admin_config' | 'pacific_r';
 
 const STORAGE_KEY = 'aether_live_studio_state_v4';
 
@@ -226,9 +233,32 @@ export function App() {
   const activeAvatar =
     avatars.find((a) => a.id === activeAvatarId) || avatars[0];
 
-  // Separação clara entre Tela de Splash, Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
-  const [showSplash, setShowSplash] = useState<boolean>(true);
-  const [screenMode, setScreenMode] = useState<ScreenMode>('live_stage');
+  // Separação clara entre Tela de Splash, Palco Ao Vivo (padrão, limpo), Administração e Área PACIFIC-R (/pacific-r)
+  const [showSplash, setShowSplash] = useState<boolean>(() => !isPacificRRoute());
+  const [screenMode, setScreenMode] = useState<ScreenMode>(() =>
+    isPacificRRoute() ? 'pacific_r' : 'live_stage'
+  );
+
+  const navigateScreenMode = useCallback((next: ScreenMode) => {
+    setScreenMode(next);
+    if (typeof window !== 'undefined') {
+      if (next === 'pacific_r') {
+        if (!isPacificRRoute()) {
+          window.history.pushState({}, '', getPacificRPath());
+        }
+      } else if (isPacificRRoute()) {
+        window.history.pushState({}, '', getAppBasePath());
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setScreenMode(isPacificRRoute() ? 'pacific_r' : 'live_stage');
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [showTranscript, setShowTranscript] = useState<boolean>(false);
   const [showDockOptions, setShowDockOptions] = useState<boolean>(false);
   const [showSubtitles, setShowSubtitles] = useState<boolean>(true);
@@ -438,7 +468,7 @@ export function App() {
 
   // Dispara a fala inicial automaticamente logo que o usuário entra no aplicativo (aguardando saída da tela de splash)
   useEffect(() => {
-    if (showSplash || initialGreetingHandledRef.current || isMuted) return;
+    if (screenMode !== 'live_stage' || showSplash || initialGreetingHandledRef.current || isMuted) return;
     const timer = window.setTimeout(() => {
       if (!initialGreetingHandledRef.current && !isMuted) {
         playInitialGreeting(false);
@@ -446,7 +476,7 @@ export function App() {
     }, 320);
     return () => window.clearTimeout(timer);
     // Executa na entrada do palco (e quando a chave de API terminar de carregar se ainda não tiver falado)
-  }, [showSplash, playInitialGreeting, isMuted]);
+  }, [screenMode, showSplash, playInitialGreeting, isMuted]);
 
   const handlePreUnlockAudioFromSplash = useCallback(() => {
     audioEngineRef.current?.initAudioContext();
@@ -1053,6 +1083,21 @@ export function App() {
   };
 
   // ============================================================================
+  // TELA 0: ÁREA DEDICADA DO PROJETO DE PESQUISA PACIFIC-R (/pacific-r)
+  // ============================================================================
+  if (screenMode === 'pacific_r') {
+    return (
+      <PacificRWorkspace
+        geminiApiKey={geminiApiKey}
+        onExitToAetherStudio={() => {
+          audioEngineRef.current?.interrupt();
+          navigateScreenMode('live_stage');
+        }}
+      />
+    );
+  }
+
+  // ============================================================================
   // TELA 1: PALCO AO VIVO (EXPERIÊNCIA DO USUÁRIO LIMPA: APENAS AVATAR + BARRA)
   // ============================================================================
   if (screenMode === 'live_stage') {
@@ -1550,11 +1595,25 @@ export function App() {
                     type="button"
                     id="btn-open-admin-studio"
                     className="hud-option-pill"
-                    onClick={() => setScreenMode('admin_config')}
+                    onClick={() => navigateScreenMode('admin_config')}
                     title="Abrir tela de configuração e estúdio"
                   >
                     <Settings size={15} />
                     <span>Config</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-open-pacific-r"
+                    className="hud-option-pill"
+                    onClick={() => {
+                      audioEngineRef.current?.interrupt();
+                      navigateScreenMode('pacific_r');
+                    }}
+                    title="Abrir área dedicada do projeto de pesquisa PACIFIC-R (ICEX)"
+                  >
+                    <FlaskConical size={15} />
+                    <span>PACIFIC-R</span>
                   </button>
                 </div>
 
@@ -1675,15 +1734,38 @@ export function App() {
           ))}
         </div>
 
-        <button
-          type="button"
-          id="btn-return-live-stage"
-          className="btn-launch-stage"
-          onClick={() => setScreenMode('live_stage')}
-        >
-          <Play size={15} />
-          <span>Ir para o Palco Ao Vivo</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            id="btn-admin-open-pacific-r"
+            className="quick-mode-btn"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderColor: 'rgba(16, 185, 129, 0.45)',
+              color: '#34d399',
+            }}
+            onClick={() => {
+              audioEngineRef.current?.interrupt();
+              navigateScreenMode('pacific_r');
+            }}
+            title="Abrir área dedicada do projeto PACIFIC-R (ICEX)"
+          >
+            <FlaskConical size={14} />
+            <span>Projeto PACIFIC-R</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-return-live-stage"
+            className="btn-launch-stage"
+            onClick={() => navigateScreenMode('live_stage')}
+          >
+            <Play size={15} />
+            <span>Ir para o Palco Ao Vivo</span>
+          </button>
+        </div>
       </header>
 
       <main className="admin-dedicated-layout">
