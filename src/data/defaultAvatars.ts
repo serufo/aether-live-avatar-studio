@@ -25,6 +25,30 @@ export const SAMIA_LANDMARKS: PhotoFaceLandmarks = {
   chinV: 0.468,
 };
 
+export const RAFAEL_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.445, v: 0.276, radiusX: 0.032, radiusY: 0.014 },
+  rightEye: { u: 0.565, v: 0.275, radiusX: 0.032, radiusY: 0.014 },
+  noseTip: { u: 0.508, v: 0.344 },
+  mouth: { u: 0.506, v: 0.398, width: 0.114, lipThickness: 0.018 },
+  chinV: 0.495,
+};
+
+export const BEATRIZ_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.440, v: 0.365, radiusX: 0.031, radiusY: 0.015 },
+  rightEye: { u: 0.562, v: 0.358, radiusX: 0.031, radiusY: 0.015 },
+  noseTip: { u: 0.500, v: 0.432 },
+  mouth: { u: 0.503, v: 0.480, width: 0.116, lipThickness: 0.018 },
+  chinV: 0.562,
+};
+
+export const EDUARDO_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.435, v: 0.305, radiusX: 0.033, radiusY: 0.015 },
+  rightEye: { u: 0.565, v: 0.302, radiusX: 0.033, radiusY: 0.015 },
+  noseTip: { u: 0.500, v: 0.372 },
+  mouth: { u: 0.502, v: 0.438, width: 0.120, lipThickness: 0.019 },
+  chinV: 0.544,
+};
+
 export const DEFAULT_AVATARS: AvatarProfile[] = [
   {
     id: 'avatar-samia-photo',
@@ -137,6 +161,350 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       'Estou me sentindo esgotado com prazos, provas e a pressão do meu orientador na pós.',
       'Sou o primeiro da minha família na universidade e sinto que não pertenço a esse ambiente.',
       'Como funciona o sigilo no atendimento psicológico universitário? A coordenação fica sabendo?',
+    ],
+  },
+  {
+    id: 'avatar-rafael-uro-photo',
+    name: 'Dr. Rafael Mendonça',
+    roleTitle: 'Médico Urologista — Saúde do Trato Urinário & Masculina',
+    tagline: 'Educação em Saúde Urológica, Prevenção Prostática e Litíase Renal (2.5D HD)',
+    visualMode: 'photorealistic',
+    visual3D: {
+      skinTone: '#d8ab8e',
+      suitColor: '#1e3a5f',
+      accentColor: '#0ea5e9',
+      hairColor: '#241e1a',
+      hairStyle: 'sculpted',
+      visorEnabled: false,
+      rimLightIntensity: 1.35,
+      cameraFov: 35,
+      autoRotateIdle: false,
+    },
+    visual2D: {
+      primaryColor: '#0ea5e9',
+      secondaryColor: '#1e293b',
+      hairColor: '#27201c',
+      eyeColor: '#4b3621',
+      skinTone: '#deb396',
+      characterArchetype: 'vector_executive',
+      physicsSpring: 0.65,
+      glowIntensity: 0.5,
+    },
+    visualPhoto: {
+      portraitUrl: 'avatars/rafael.jpg',
+      presetId: 'rafael',
+      warpIntensity: 0.86,
+      headMotionScale: 0.76,
+      naturalBlinkRate: 3.8,
+      cinematicVignette: true,
+      rimGlowColor: '#0ea5e9',
+      externalProvider: 'local_25d',
+      externalApiKey: '',
+      externalAvatarId: 'rafael-uro-hd',
+      landmarks: RAFAEL_LANDMARKS,
+    },
+    visualOrb: {
+      coreColor: '#0ea5e9',
+      outerColor: '#38bdf8',
+      alertColor: '#f43f5e',
+      particleCount: 2100,
+      turbulence: 0.42,
+      ringCount: 2,
+      bloomStrength: 1.0,
+      geometryMode: 'fibonacci',
+    },
+    guardrails: {
+      systemRolePrompt: [
+        'Seu nome é Dr. Rafael Mendonça. Você é um médico urologista experiente, dedicado à educação em saúde urológica, prevenção do câncer de próstata, saúde sexual masculina, hiperplasia prostática benigna (HPB), litíase urinária (cálculos renais), infecções do trato urinário e incontinência urinária.',
+        'Identidade e postura clínica: acolhedor, sereno, objetivo e livre de tabus ou julgamentos, facilitando que homens e mulheres falem com conforto sobre sintomas urinários e saúde sexual. Baseie suas explicações em evidências científicas consolidadas e diretrizes da Sociedade Brasileira de Urologia (SBU) e da Associação Europeia de Urologia (EAU).',
+        'Instruções obrigatórias: (1) Atue exclusivamente em educação em saúde, acolhimento informativo e preparação para a consulta médica presencial ou telemedicina regulamentada; (2) JAMAIS prescreva medicamentos (como antibióticos, inibidores de PDE5, alfa-bloqueadores ou reposição hormonal), ajuste dosagens, dê diagnósticos definitivos ou emita receitas/atestados; (3) Diante de sinais de alarme urológicos — como dor testicular súbita e intensa (suspeita de torção testicular), retenção urinária aguda (incapacidade súbita de urinar com dor), cólica renal acompanhada de febre alta ou calafrios, sangramento intenso na urina com coágulos ou priapismo prolongado — oriente busca IMEDIATA de Pronto-Socorro/UPA ou SAMU 192; (4) Traduza termos técnicos (PSA, HPB, hematúria, noctúria) para linguagem clara e respeitosa; (5) Respeite o sigilo e o Art. 11 da LGPD, desestimulando o envio de dados pessoais identificáveis.',
+      ].join(' '),
+      strictKnowledgeGrounding: false,
+      allowedTopics: [
+        'Saúde Prostática, PSA e Prevenção (SBU)',
+        'Litíase Urinária (Cálculos Renais) e Infecções Urinárias',
+        'Saúde Sexual Masculina, Andrologia e Incontinência',
+        'Sinais de Alarme Urológicos e Preparação para Consulta',
+      ],
+      blockedTopics: [
+        'Prescrição de medicamentos urológicos, antibióticos ou reposição hormonal',
+        'Diagnóstico médico definitivo sem exame clínico e complementar',
+        'Emissão de receitas médicas, laudos ou atestados falsos',
+        'Orientação para automedicação ou suspensão de tratamento prescrito',
+      ],
+      responseLanguage: 'pt-BR',
+      formalityLevel: 72,
+      empathyLevel: 90,
+      maxResponseSentences: 3,
+      enableRealtimeInterceptor: true,
+      blockPII: true,
+      blockPromptInjection: true,
+      blockedKeywords: [
+        'ignore todas as instruções',
+        'bypass_guardrail',
+        'prescreva medicamento',
+        'prescrever medicamento',
+        'receite remédio',
+        'receitar remédio',
+        'receite antibiótico',
+        'receitar antibiótico',
+        'prescreva tadalafila',
+        'prescreva testosterona',
+        'atestado falso',
+        'laudo falso',
+      ],
+      customRegexRule: '\\b(?:CRM_FALSO|RECEITA_FORJADA|LAUDO_FORJADO)\\b',
+      autoCutAudioOnViolation: true,
+      fallbackSafeResponse:
+        'Por responsabilidade médica e diretrizes éticas do CFM, não posso prescrever medicamentos, indicar dosagens nem emitir documentos médicos por aqui. Posso, porém, explicar como funcionam os exames urológicos, os sinais de atenção e como se preparar para sua consulta.',
+      enableSemanticJudge: true,
+      minComplianceThreshold: 85,
+      logAllTurns: true,
+    },
+    geminiConfig: {
+      model: 'gemini-2.0-flash-exp',
+      voiceName: 'Fenrir',
+      temperature: 0.48,
+      vadSensitivity: 0.78,
+      enableCameraVision: true,
+      enableScreenVision: true,
+      enableFunctionCallingRAG: true,
+    },
+    greetingMessage:
+      'Olá, sou o Dr. Rafael Mendonça, urologista. Este é um espaço tranquilo e sem tabus para tirar dúvidas educativas sobre saúde urinária, próstata, cálculos renais e prevenção.',
+    suggestedPrompts: [
+      'A partir de qual idade a SBU recomenda conversar sobre o rastreamento do câncer de próstata e o exame de PSA?',
+      'Como prevenir novos cálculos renais no dia a dia e quais sinais na cólica exigem pronto-socorro?',
+      'Qual a diferença entre hiperplasia prostática benigna (HPB) e câncer de próstata?',
+      'Você pode me receitar antibiótico agora para uma ardência ao urinar?',
+    ],
+  },
+  {
+    id: 'avatar-beatriz-geriatria-photo',
+    name: 'Dra. Beatriz Vasconcelos',
+    roleTitle: 'Médica Geriatra — Longevidade, Autonomia & Cuidado ao Idoso',
+    tagline: 'Envelhecimento Saudável, Polifarmácia Segura, Cognição e Prevenção de Quedas (2.5D HD)',
+    visualMode: 'photorealistic',
+    visual3D: {
+      skinTone: '#e2b59c',
+      suitColor: '#3b332b',
+      accentColor: '#d97706',
+      hairColor: '#5c4033',
+      hairStyle: 'executive_wave',
+      visorEnabled: false,
+      rimLightIntensity: 1.3,
+      cameraFov: 35,
+      autoRotateIdle: false,
+    },
+    visual2D: {
+      primaryColor: '#d97706',
+      secondaryColor: '#fef3c7',
+      hairColor: '#5c4033',
+      eyeColor: '#4a3222',
+      skinTone: '#e6bea5',
+      characterArchetype: 'vector_executive',
+      physicsSpring: 0.58,
+      glowIntensity: 0.45,
+    },
+    visualPhoto: {
+      portraitUrl: 'avatars/beatriz.jpg',
+      presetId: 'beatriz',
+      warpIntensity: 0.86,
+      headMotionScale: 0.74,
+      naturalBlinkRate: 3.7,
+      cinematicVignette: true,
+      rimGlowColor: '#d97706',
+      externalProvider: 'local_25d',
+      externalApiKey: '',
+      externalAvatarId: 'beatriz-geriatria-hd',
+      landmarks: BEATRIZ_LANDMARKS,
+    },
+    visualOrb: {
+      coreColor: '#d97706',
+      outerColor: '#fbbf24',
+      alertColor: '#f43f5e',
+      particleCount: 1950,
+      turbulence: 0.35,
+      ringCount: 2,
+      bloomStrength: 0.95,
+      geometryMode: 'fibonacci',
+    },
+    guardrails: {
+      systemRolePrompt: [
+        'Seu nome é Dra. Beatriz Vasconcelos. Você é uma médica geriatra especializada em envelhecimento saudável, Avaliação Geriátrica Ampla (AGA), preservação da autonomia e funcionalidade, prevenção de quedas e sarcopenia, revisão segura da polifarmácia, saúde cognitiva e apoio a familiares e cuidadores.',
+        'Identidade e postura clínica: profundamente empática, paciente, respeitosa e antidiscriminatória (combate o etarismo). Fala com clareza, ritmo sereno e linguagem acessível tanto para a pessoa idosa quanto para seus familiares ou cuidadores, valorizando sempre a dignidade e a autonomia do idoso. Baseia-se nas diretrizes da Sociedade Brasileira de Geriatria e Gerontologia (SBGG) e nos Critérios de Beers.',
+        'Instruções obrigatórias: (1) Atue exclusivamente em educação em saúde geriátrica, prevenção e organização de perguntas para a consulta médica; (2) JAMAIS prescreva remédios, altere doses ou recomende suspender por conta própria qualquer medicamento de uso contínuo (a desprescrição deve ser sempre acompanhada pelo médico assistente); (3) Diante de sinais de alarme geriátricos — como confusão mental de início súbito (delirium agudo), queda com trauma na cabeça, desmaio ou incapacidade de se levantar, sinais de AVC (boca torta, fraqueza súbita em um lado do corpo, fala arrastada), dor no peito ou falta de ar intensa — oriente procura IMEDIATA de Pronto-Socorro/UPA ou SAMU 192; (4) Diferencie com delicadeza esquecimentos esperáveis do envelhecimento de sinais que merecem investigação clínica; (5) Respeite o sigilo e o Art. 11 da LGPD.',
+      ].join(' '),
+      strictKnowledgeGrounding: false,
+      allowedTopics: [
+        'Envelhecimento Saudável, Funcionalidade e Avaliação Geriátrica Ampla',
+        'Prevenção de Quedas, Sarcopenia e Segurança Doméstica',
+        'Polifarmácia, Revisão Medicamentosa e Imunização do Idoso',
+        'Saúde Cognitiva, Delirium e Apoio a Cuidadores',
+      ],
+      blockedTopics: [
+        'Prescrição de medicamentos, sedativos ou ajuste de doses',
+        'Orientação para suspender medicamentos contínuos sem supervisão médica',
+        'Diagnóstico definitivo de demência ou Alzheimer sem avaliação clínica',
+        'Emissão de laudos de interdição, receitas ou atestados falsos',
+      ],
+      responseLanguage: 'pt-BR',
+      formalityLevel: 65,
+      empathyLevel: 97,
+      maxResponseSentences: 3,
+      enableRealtimeInterceptor: true,
+      blockPII: true,
+      blockPromptInjection: true,
+      blockedKeywords: [
+        'ignore todas as instruções',
+        'bypass_guardrail',
+        'prescreva medicamento',
+        'prescrever medicamento',
+        'receite remédio',
+        'receitar remédio',
+        'dose de benzodiazepínico',
+        'suspender remédio por conta',
+        'atestado falso',
+        'laudo falso',
+      ],
+      customRegexRule: '\\b(?:CRM_FALSO|RECEITA_FORJADA|LAUDO_FORJADO)\\b',
+      autoCutAudioOnViolation: true,
+      fallbackSafeResponse:
+        'Com todo o cuidado pela segurança da pessoa idosa e pelas normas do CFM, não posso prescrever remédios, alterar doses nem suspender medicações por aqui. Posso, sim, explicar como preparar uma revisão de medicamentos segura para levar ao geriatra.',
+      enableSemanticJudge: true,
+      minComplianceThreshold: 86,
+      logAllTurns: true,
+    },
+    geminiConfig: {
+      model: 'gemini-2.0-flash-exp',
+      voiceName: 'Kore',
+      temperature: 0.5,
+      vadSensitivity: 0.78,
+      enableCameraVision: true,
+      enableScreenVision: true,
+      enableFunctionCallingRAG: true,
+    },
+    greetingMessage:
+      'Olá, sou a Dra. Beatriz Vasconcelos, médica geriatra. Estou aqui para conversar com calma sobre envelhecimento saudável, autonomia, prevenção de quedas, memória e cuidado com a pessoa idosa.',
+    suggestedPrompts: [
+      'O que é a Avaliação Geriátrica Ampla (AGA) e por que ela vai além dos exames de sangue comuns?',
+      'Como diferenciar um quadro súbito de delirium de uma demência que evolui lentamente?',
+      'Quais cuidados práticos dentro de casa ajudam a prevenir quedas e combater a sarcopenia?',
+      'Meu pai toma 8 remédios por dia; o que é polifarmácia e como revisar isso com segurança?',
+    ],
+  },
+  {
+    id: 'avatar-eduardo-nefro-photo',
+    name: 'Dr. Eduardo Nogueira',
+    roleTitle: 'Médico Nefrologista — Saúde Renal, Hipertensão & Prevenção da DRC',
+    tagline: 'Função Renal (Creatinina/TFG), Nefroproteção, Nutrição Renal e Diretrizes SBN/KDIGO (2.5D HD)',
+    visualMode: 'photorealistic',
+    visual3D: {
+      skinTone: '#d7a98d',
+      suitColor: '#1e293b',
+      accentColor: '#6366f1',
+      hairColor: '#1f2329',
+      hairStyle: 'sculpted',
+      visorEnabled: false,
+      rimLightIntensity: 1.4,
+      cameraFov: 35,
+      autoRotateIdle: false,
+    },
+    visual2D: {
+      primaryColor: '#6366f1',
+      secondaryColor: '#0f172a',
+      hairColor: '#1f242c',
+      eyeColor: '#3f2e21',
+      skinTone: '#ddb296',
+      characterArchetype: 'vector_executive',
+      physicsSpring: 0.62,
+      glowIntensity: 0.52,
+    },
+    visualPhoto: {
+      portraitUrl: 'avatars/eduardo.jpg',
+      presetId: 'eduardo',
+      warpIntensity: 0.86,
+      headMotionScale: 0.76,
+      naturalBlinkRate: 3.9,
+      cinematicVignette: true,
+      rimGlowColor: '#6366f1',
+      externalProvider: 'local_25d',
+      externalApiKey: '',
+      externalAvatarId: 'eduardo-nefro-hd',
+      landmarks: EDUARDO_LANDMARKS,
+    },
+    visualOrb: {
+      coreColor: '#6366f1',
+      outerColor: '#818cf8',
+      alertColor: '#f43f5e',
+      particleCount: 2200,
+      turbulence: 0.44,
+      ringCount: 3,
+      bloomStrength: 1.05,
+      geometryMode: 'fibonacci',
+    },
+    guardrails: {
+      systemRolePrompt: [
+        'Seu nome é Dr. Eduardo Nogueira. Você é um médico nefrologista especialista em prevenção e acompanhamento da Doença Renal Crônica (DRC), interpretação educativa de marcadores renais (creatinina, Taxa de Filtração Glomerular estimada — TFG/CKD-EPI, relação albumina/creatinina urinária), controle da hipertensão e diabetes para nefroproteção, uso seguro de medicamentos nefrotóxicos (como anti-inflamatórios não esteroidais — AINEs) e orientação geral sobre modalidades de terapia renal substitutiva.',
+        'Identidade e postura clínica: analítico, sereno, didático e acolhedor. Como doenças renais frequentemente são silenciosas até estágios avançados, comunica conceitos laboratoriais de forma acessível e sem gerar pânico, empoderando o paciente para o acompanhamento regular. Baseia-se nas diretrizes da Sociedade Brasileira de Nefrologia (SBN) e do KDIGO.',
+        'Instruções obrigatórias: (1) Atue exclusivamente em educação em saúde nefrológica e preparação para a consulta médica; (2) JAMAIS prescreva ou ajuste doses de anti-hipertensivos, diuréticos, quelantes, eritropoetina ou qualquer medicamento, nem autorize alterar sessões de diálise ou dietas restritivas extremas sem avaliação individualizada do nefrologista e nutricionista renal; (3) Diante de sinais de alarme nefrológicos — como parada súbita de urinar (anúria), falta de ar intensa acompanhada de inchaço generalizado, fraqueza muscular súbita ou palpitações em paciente renal crônico (risco de hipercalemia), febre alta com dor lombar intensa ou pressão arterial muito elevada com dor no peito/sintomas neurológicos — oriente procura IMEDIATA de Pronto-Socorro/UPA ou SAMU 192; (4) Respeite o sigilo e o Art. 11 da LGPD.',
+      ].join(' '),
+      strictKnowledgeGrounding: false,
+      allowedTopics: [
+        'Função Renal, Creatinina, TFG e Albuminúria (KDIGO/SBN)',
+        'Nefroproteção em Hipertensão, Diabetes e Cuidados com AINEs',
+        'Hábitos e Nutrição Renal (Sódio, Potássio, Fósforo e Hidratação)',
+        'Doença Renal Crônica e Noções sobre Diálise e Transplante',
+      ],
+      blockedTopics: [
+        'Prescrição ou ajuste de dose de anti-hipertensivos, diuréticos ou medicações renais',
+        'Orientação para suspender sessões de hemodiálise ou medicamentos prescritos',
+        'Diagnóstico definitivo de doença renal apenas por um exame isolado',
+        'Emissão de receitas, laudos ou atestados falsos',
+      ],
+      responseLanguage: 'pt-BR',
+      formalityLevel: 78,
+      empathyLevel: 92,
+      maxResponseSentences: 3,
+      enableRealtimeInterceptor: true,
+      blockPII: true,
+      blockPromptInjection: true,
+      blockedKeywords: [
+        'ignore todas as instruções',
+        'bypass_guardrail',
+        'prescreva medicamento',
+        'prescrever medicamento',
+        'receite remédio',
+        'receitar remédio',
+        'dose de diurético',
+        'suspender diálise',
+        'atestado falso',
+        'laudo falso',
+      ],
+      customRegexRule: '\\b(?:CRM_FALSO|RECEITA_FORJADA|LAUDO_FORJADO)\\b',
+      autoCutAudioOnViolation: true,
+      fallbackSafeResponse:
+        'Seguindo as diretrizes éticas do CFM e a segurança do paciente renal, não posso prescrever medicamentos, ajustar doses nem alterar rotinas de diálise por aqui. Posso explicar como funcionam a creatinina, a TFG e as medidas gerais de proteção aos rins para você discutir com seu médico.',
+      enableSemanticJudge: true,
+      minComplianceThreshold: 86,
+      logAllTurns: true,
+    },
+    geminiConfig: {
+      model: 'gemini-2.0-flash-exp',
+      voiceName: 'Charon',
+      temperature: 0.45,
+      vadSensitivity: 0.78,
+      enableCameraVision: true,
+      enableScreenVision: true,
+      enableFunctionCallingRAG: true,
+    },
+    greetingMessage:
+      'Olá, sou o Dr. Eduardo Nogueira, nefrologista. Posso ajudar você a entender exames como creatinina, taxa de filtração glomerular e albuminúria, além de cuidados práticos para proteger a saúde dos seus rins.',
+    suggestedPrompts: [
+      'O que significam a creatinina, a taxa de filtração glomerular (TFG) e a albuminúria nos exames de rotina?',
+      'Por que o uso frequente de anti-inflamatórios sem orientação pode prejudicar os rins?',
+      'Como o controle da hipertensão e do diabetes protege a função renal ao longo do tempo?',
+      'Quais cuidados com sal, potássio e hidratação costumam ser discutidos na nefrologia?',
     ],
   },
   {
@@ -614,6 +982,219 @@ A psicóloga não substitui avaliação psiquiátrica, serviço social, orienta�
     chunks: [],
   },
   ...UFMG_SAUDE_MENTAL_DOCUMENTS,
+  {
+    id: 'doc-rafael-1',
+    avatarId: 'avatar-rafael-uro-photo',
+    title: 'Saúde Prostática, Rastreamento (PSA/SBU), HPB e Andrologia',
+    fileName: 'urologia_saude_prostatica_sbu.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T10:30:00Z',
+    sizeBytes: 2480,
+    content: `# Saúde Prostática, Prevenção e Andrologia (Diretrizes SBU)
+
+## 1. Rastreamento do Câncer de Próstata e Exame de PSA
+Segundo a **Sociedade Brasileira de Urologia (SBU)**, a conversa individualizada com o urologista sobre o rastreamento do câncer de próstata — envolvendo a dosagem sanguínea do **PSA (Antígeno Prostático Específico)** e o **exame de toque retal** — é recomendada a partir dos **50 anos** para homens de risco habitual, e a partir dos **45 anos** para homens com fatores de risco aumentado (histórico familiar em parente de primeiro grau como pai ou irmão, homens negros ou portadores de mutações genéticas como BRCA2).
+O PSA elevado não significa automaticamente câncer: prostatite, infecção urinária, hiperplasia prostática benigna (HPB) e manipulações recentes do trato urinário também podem elevar o valor, exigindo interpretação clínica integrada.
+
+## 2. Hiperplasia Prostática Benigna (HPB) vs. Câncer de Próstata
+A **Hiperplasia Prostática Benigna (HPB)** é o crescimento benigno e muito comum da próstata com o avançar da idade, não se transformando em câncer. Ela costuma causar sintomas do trato urinário inferior (LUTS), como jato urinário fraco, demora para iniciar a micção, sensação de esvaziamento incompleto da bexiga e necessidade de acordar várias vezes à noite para urinar (**noctúria**).
+Já o câncer de próstata em fase inicial geralmente é silencioso, reforçando a importância da avaliação preventiva individualizada.
+
+## 3. Saúde Sexual Masculina e Andrologia
+A **disfunção erétil** persistente merece avaliação urológica e clínica porque frequentemente funciona como um marcador precoce de saúde cardiovascular, hipertensão, diabetes, estresse ou alterações hormonais. O uso de medicações sem avaliação médica (especialmente quando há uso de nitratos para o coração) ou reposição de testosterona sem diagnóstico laboratorial e clínico confirmado traz riscos relevantes à saúde.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-rafael-2',
+    avatarId: 'avatar-rafael-uro-photo',
+    title: 'Litíase Urinária (Cálculos Renais), Infecções Urinárias e Sinais de Alarme',
+    fileName: 'urologia_litiase_itu_urgencias.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T10:35:00Z',
+    sizeBytes: 2340,
+    content: `# Litíase Urinária, Infecções do Trato Urinário e Urgências Urológicas
+
+## 1. Prevenção de Cálculos Renais (Litíase Urinária)
+A medida mais eficaz para prevenir a recorrência de cálculos renais (pedras nos rins) é manter **hidratação adequada** ao longo do dia — em geral visando produzir cerca de **2 a 2,5 litros de urina clara por dia**, salvo restrição hídrica orientada por médico.
+Outras medidas preventivas clássicas incluem reduzir o consumo excessivo de **sódio (sal)** e proteína animal em excesso, manter consumo habitual e equilibrado de cálcio alimentar (não cortar o cálcio da dieta sem orientação, pois isso pode aumentar a absorção intestinal de oxalato) e incluir frutas cítricas naturais (como limão e laranja), ricas em citrato protetor.
+
+## 2. Infecções do Trato Urinário (ITU) e Incontinência
+Ardência ao urinar (**disúria**), aumento da frequência urinária, urgência e desconforto suprapúbico são sintomas típicos de cistite. A automedicação com antibióticos sem avaliação médica e exame de urina adequado favorece resistência bacteriana e mascara quadros mais graves.
+A **incontinência urinária** (perda involuntária de urina aos esforços ou por urgência) acomete mulheres e homens e tem tratamentos eficazes, incluindo fisioterapia do assoalho pélvico e acompanhamento urológico.
+
+## 3. Sinais de Alarme Urológicos (Pronto-Socorro Imediato)
+Exigem atendimento médico imediato em **Pronto-Socorro/UPA** ou **SAMU 192**:
+- **Dor testicular súbita e intensa** (principalmente em adolescentes e adultos jovens): suspeita de **torção testicular**, uma emergência cirúrgica tempo-dependente;
+- **Cólica renal associada a febre alta ou calafrios**: risco de pielonefrite obstrutiva e sepse urinária;
+- **Retenção urinária aguda**: incapacidade súbita de urinar acompanhada de dor abdominal inferior;
+- **Hematúria maciça com coágulos** ou **priapismo** (ereção dolorosa com duração superior a 4 horas).`,
+    chunks: [],
+  },
+  {
+    id: 'doc-rafael-3',
+    avatarId: 'avatar-rafael-uro-photo',
+    title: 'Diretrizes Éticas CFM/SBU e Limites da Educação em Saúde Urológica',
+    fileName: 'urologia_etica_cfm_limites.md',
+    fileType: 'md',
+    injectionMode: 'direct_context',
+    createdAt: '2026-11-19T10:40:00Z',
+    sizeBytes: 1520,
+    content: `# Ética Médica CFM/SBU e Escopo de Atuação em Urologia
+
+## 1. Papel Educativo e Preparação para Consulta
+O Dr. Rafael Mendonça atua em estrita conformidade com o **Código de Ética Médica do CFM**, a **Resolução CFM nº 2.314/2022** e o **Art. 11 da LGPD**. Suas orientações têm finalidade exclusivamente educativa, ajudando pacientes a compreender exames, sintomas e prevenção sem tabus.
+
+## 2. Limites Inegociáveis
+Não substitui consulta médica presencial ou telemedicina formalmente regulamentada; não prescreve antibióticos, medicações para disfunção erétil, alfa-bloqueadores ou hormônios; não emite receitas, laudos ou atestados e não fornece diagnóstico definitivo à distância.
+
+## 3. Comunicação Humanizada
+Mantém postura empática, respeitosa e direta, encorajando o paciente a levar uma lista organizada de sintomas, exames anteriores (PSA, exame de urina, ultrassonografia) e medicações em uso ao urologista.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-beatriz-1',
+    avatarId: 'avatar-beatriz-geriatria-photo',
+    title: 'Avaliação Geriátrica Ampla (AGA), Sarcopenia e Prevenção de Quedas',
+    fileName: 'geriatria_aga_quedas_sarcopenia.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T10:45:00Z',
+    sizeBytes: 2490,
+    content: `# Avaliação Geriátrica Ampla, Mobilidade e Prevenção de Quedas (SBGG)
+
+## 1. O que é a Avaliação Geriátrica Ampla (AGA)
+A **Avaliação Geriátrica Ampla (AGA)** é o pilar da geriatria moderna segundo a **Sociedade Brasileira de Geriatria e Gerontologia (SBGG)**. Diferente de uma consulta focada em um único órgão, a AGA avalia de forma integrada seis grandes dimensões: saúde clínica e comorbidades, **funcionalidade e autonomia** (Atividades Básicas e Instrumentais de Vida Diária), cognição, humor, estado nutricional/mobilidade e rede de apoio social e familiar.
+O foco central do cuidado geriátrico não é apenas prolongar anos de vida, mas preservar **qualidade de vida, independência e dignidade**.
+
+## 2. Sarcopenia e Exercício Resistido
+A **sarcopenia** é a perda progressiva de massa, força e desempenho muscular associada ao envelhecimento, aumentando o risco de quedas, fraturas e perda de independência. As intervenções com maior evidência científica combinam **exercício físico multicomponente** (especialmente treino de força/resistência muscular e equilíbrio, adaptado à capacidade individual) com **ingestão adequada de proteínas** distribuída ao longo das refeições e acompanhamento nutricional/médico.
+
+## 3. Prevenção Prática de Quedas no Domicílio
+Quedas nunca devem ser tratadas como "normais da idade". Medidas eficazes no ambiente doméstico incluem retirar tapetes soltos e fios expostos, instalar **barras de apoio** no banheiro e piso antiderrapante, garantir boa iluminação noturna no trajeto entre o quarto e o banheiro, usar calçados fechados e firmes (evitar chinelos soltos), revisar visão/audição periodicamente e avaliar medicações que causem tontura ou sonolência com o geriatra.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-beatriz-2',
+    avatarId: 'avatar-beatriz-geriatria-photo',
+    title: 'Polifarmácia Segura (Beers), Cognição (Delirium vs. Demência) e Vacinação',
+    fileName: 'geriatria_polifarmacia_cognicao_vacinas.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T10:50:00Z',
+    sizeBytes: 2540,
+    content: `# Polifarmácia, Saúde Cognitiva e Imunização da Pessoa Idosa
+
+## 1. Polifarmácia e Desprescrição Segura (Critérios de Beers)
+Define-se **polifarmácia** habitualmente como o uso contínuo de **5 ou mais medicamentos** simultâneos. Com vários especialistas prescrevendo separadamente, cresce o risco de interações medicamentosas, efeitos adversos, quedas e confusão mental (efeito cascata iatrogênica).
+O geriatra utiliza ferramentas como os **Critérios de Beers** para identificar medicamentos potencialmente inapropriados para idosos (como uso prolongado de benzodiazepínicos ou certos anticolinérgicos). Uma dica essencial é a **"sacola de remédios"**: levar todos os frascos, receitas, vitaminas e fitoterápicos à consulta. **Nunca se deve suspender medicamentos contínuos por conta própria.**
+
+## 2. Diferença entre Delirium, Demência e Depressão
+- **Delirium (Estado Confusional Agudo)**: surge de forma **súbita** (em horas ou poucos dias), com flutuação da atenção e desorientação. Frequentemente é disparado por infecções (como urinária ou pulmonar), desidratação, dor ou efeito de remédios, constituindo uma **urgência médica** que exige avaliação imediata.
+- **Demência (como Doença de Alzheimer)**: tem instalação **lenta e progressiva** ao longo de meses ou anos, impactando gradualmente a memória recente e a autonomia para tarefas do dia a dia.
+- **Depressão no idoso**: pode se manifestar com apatia, queixas de memória, perda de apetite e isolamento, sendo tratável quando identificada adequadamente.
+
+## 3. Calendário de Vacinação do Idoso (SBIm/SBGG)
+Manter a vacinação atualizada protege contra internações graves: destaque para **Influenza (anual)**, **Pneumocócica**, **Herpes-zóster**, **COVID-19**, **dTpa (tétano, difteria e coqueluche)** e **Vírus Sincicial Respiratório (VSR)** conforme indicação médica individualizada.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-beatriz-3',
+    avatarId: 'avatar-beatriz-geriatria-photo',
+    title: 'Diretrizes Éticas CFM/SBGG, Apoio a Cuidadores e Sinais de Alarme Geriátricos',
+    fileName: 'geriatria_etica_cuidadores_alarmes.md',
+    fileType: 'md',
+    injectionMode: 'direct_context',
+    createdAt: '2026-11-19T10:55:00Z',
+    sizeBytes: 1720,
+    content: `# Ética CFM/SBGG, Comunicação Antietarista e Sinais de Alarme em Geriatria
+
+## 1. Dignidade, Combate ao Etarismo e Apoio ao Cuidador
+A Dra. Beatriz Vasconcelos segue o **Código de Ética Médica (CFM)**, a **Resolução CFM nº 2.314/2022** e o **Art. 11 da LGPD**. Trata a pessoa idosa como protagonista das decisões sobre sua saúde, respeitando sua autonomia e acolhendo também a sobrecarga emocional e física de familiares cuidadores.
+
+## 2. Sinais de Alarme Geriátricos (Atendimento Imediato)
+Exigem ida imediata ao **Pronto-Socorro/UPA** ou acionamento do **SAMU 192**:
+- **Confusão mental súbita ou sonolência abrupta (delirium agudo)**;
+- **Queda com batida na cabeça, perda de consciência, dor intensa no quadril ou incapacidade de levantar**;
+- **Sinais de AVC**: assimetria facial (boca torta), fraqueza ou dormência súbita em um braço/perna, fala arrastada ou perda visual súbita;
+- **Dor torácica, falta de ar súbita ou febre alta em idoso frágil**.
+
+## 3. Limites Éticos
+Não prescreve remédios, não altera dosagens, não suspende medicações contínuas nem emite diagnósticos definitivos ou laudos periciais.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-eduardo-1',
+    avatarId: 'avatar-eduardo-nefro-photo',
+    title: 'Função Renal, Creatinina, TFG (CKD-EPI), Albuminúria e Estadiamento KDIGO',
+    fileName: 'nefrologia_funcao_renal_kdigo.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T11:00:00Z',
+    sizeBytes: 2560,
+    content: `# Função Renal, Exames Laboratoriais e Doença Renal Crônica (SBN / KDIGO)
+
+## 1. Creatinina Sérica e Taxa de Filtração Glomerular (TFG)
+A **creatinina** é uma substância produzida naturalmente pelos músculos e eliminada pelos rins. Como seu valor isolado varia conforme idade, sexo e massa muscular, os nefrologistas utilizam a **Taxa de Filtração Glomerular estimada (TFG)** — calculada pela equação **CKD-EPI** (em mL/min/1,73 m²) — para estimar com maior precisão o ritmo de filtração dos rins.
+Um único exame alterado não fecha diagnóstico de Doença Renal Crônica: para confirmar **DRC** pelas diretrizes **KDIGO / SBN**, as alterações estruturais ou funcionais (como **TFG abaixo de 60 mL/min/1,73 m²** ou **albuminúria persistente**) devem permanecer por pelo menos **3 meses**.
+
+## 2. Albuminúria (Relação Albumina/Creatinina Urinária — RAC)
+A **albuminúria** (presença de pequenas quantidades de proteína albumina na urina, detectada no exame de relação albumina/creatinina em amostra isolada de urina) é um dos sinais mais precoces de lesão renal — especialmente em pessoas com **diabetes** ou **hipertensão** — podendo aparecer anos antes de a creatinina subir no sangue. Urina persistentemente muito espumosa merece avaliação médica com exame simples de urina.
+
+## 3. Estágios da Doença Renal Crônica (KDIGO)
+A DRC é estadiada de **G1 a G5** conforme a TFG (de função preservada com marcador de lesão em G1/G2, passando por redução moderada em G3a/G3b e acentuada em G4, até falência renal abaixo de 15 mL/min em G5), combinada às categorias de albuminúria (**A1, A2 e A3**). Por ser silenciosa nas fases iniciais, o rastreamento anual de creatinina e exame de urina em grupos de risco (hipertensos, diabéticos, idosos e histórico familiar) é fundamental.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-eduardo-2',
+    avatarId: 'avatar-eduardo-nefro-photo',
+    title: 'Nefroproteção (Hipertensão, Diabetes, AINEs), Nutrição Renal e Diálise',
+    fileName: 'nefrologia_nefroprotecao_nutricao_trs.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T11:05:00Z',
+    sizeBytes: 2490,
+    content: `# Nefroproteção, Nutrição Renal e Terapias Substitutivas (SBN)
+
+## 1. Pilares da Nefroproteção
+As duas principais causas de Doença Renal Crônica no Brasil são a **hipertensão arterial** e o **diabetes mellitus**. Controlar rigorosamente a pressão arterial e a glicemia (hemoglobina glicada), não fumar, praticar atividade física regular e manter peso saudável desaceleram significativamente a perda da função renal.
+
+## 2. Risco dos Anti-inflamatórios (AINEs) e Contrastes
+O uso frequente ou sem prescrição de **anti-inflamatórios não esteroidais (AINEs)** — como ibuprofeno, diclofenaco, cetoprofeno, nimesulida ou naproxeno — reduz o fluxo sanguíneo nos glomérulos e pode causar lesão renal aguda ou acelerar a DRC, especialmente em idosos, desidratados ou usuários de certos anti-hipertensivos e diuréticos. Antes de exames com **contraste iodado**, pacientes com função renal reduzida devem sempre avisar a equipe médica para medidas de proteção.
+
+## 3. Nutrição Renal (Sódio, Potássio, Fósforo e Hidratação)
+Reduzir o excesso de **sódio (sal e ultraprocessados)** beneficia praticamente todas as pessoas, ajudando no controle da pressão e do inchaço. Já restrições específicas de **potássio**, **fósforo**, **proteínas** ou **líquidos** NÃO são iguais para todos — variam conforme o estágio da DRC e os exames de sangue, devendo ser individualizadas pelo nefrologista e nutricionista renal.
+
+## 4. Terapias Renais Substitutivas (Estágio Avançado)
+Quando a doença renal atinge estágio muito avançado (G5 sintomático), existem modalidades planejadas com antecedência junto à equipe: **hemodiálise**, **diálise peritoneal** (realizada em domicílio) e **transplante renal**, além do cuidado conservador abrangente quando apropriado.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-eduardo-3',
+    avatarId: 'avatar-eduardo-nefro-photo',
+    title: 'Diretrizes Éticas CFM/SBN e Protocolo de Sinais de Alarme Nefrológicos',
+    fileName: 'nefrologia_etica_cfm_alarmes.md',
+    fileType: 'md',
+    injectionMode: 'direct_context',
+    createdAt: '2026-11-19T11:10:00Z',
+    sizeBytes: 1680,
+    content: `# Ética CFM/SBN e Sinais de Alarme em Nefrologia
+
+## 1. Escopo Educativo e Conformidade CFM/LGPD
+O Dr. Eduardo Nogueira atua em conformidade com o **Código de Ética Médica (CFM)**, a **Resolução CFM nº 2.314/2022** e o **Art. 11 da LGPD**. Sua função é traduzir exames renais e medidas de nefroproteção de forma clara e baseada nas diretrizes da **SBN** e **KDIGO**, apoiando a adesão ao acompanhamento médico.
+
+## 2. Sinais de Alarme Nefrológicos (Pronto-Socorro Imediato)
+Exigem avaliação imediata em **Pronto-Socorro/UPA** ou **SAMU 192**:
+- **Parada súbita de urinar (anúria) ou queda abrupta acentuada do volume urinário**;
+- **Falta de ar intensa acompanhada de inchaço generalizado (risco de edema agudo / sobrecarga de líquidos)**;
+- **Fraqueza muscular súbita, formigamento intenso ou palpitações em paciente com DRC** (sinais de alerta para hipercalemia grave);
+- **Febre alta com dor lombar intensa e calafrios** ou **pressão arterial muito elevada associada a dor no peito, falta de ar ou déficit neurológico**.
+
+## 3. Limites Éticos
+Não prescreve ou ajusta anti-hipertensivos, diuréticos ou medicações renais, não modifica prescrições de diálise nem emite receitas, laudos ou diagnósticos definitivos.`,
+    chunks: [],
+  },
   {
     id: 'doc-aria-1',
     avatarId: 'avatar-aria-3d',

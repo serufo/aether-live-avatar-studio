@@ -33,6 +33,10 @@ function extractTerms(text: string): string[] {
     .filter((t) => t.length > 2 && !STOPWORDS.has(t));
 }
 
+function hasNonHeadingBody(text: string): boolean {
+  return text.replace(/^#+\s+.*$/gm, '').trim().length > 0;
+}
+
 export function chunkDocumentContent(
   docId: string,
   docTitle: string,
@@ -43,10 +47,23 @@ export function chunkDocumentContent(
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
+  const sections: string[] = [];
+  let pendingSubheading = '';
+  for (const raw of rawSections) {
+    if (!hasNonHeadingBody(raw)) {
+      if (/^#{2,3}\s+/.test(raw)) {
+        pendingSubheading = pendingSubheading ? `${pendingSubheading}\n${raw}` : raw;
+      }
+      continue;
+    }
+    sections.push(pendingSubheading ? `${pendingSubheading}\n${raw}` : raw);
+    pendingSubheading = '';
+  }
+
   const chunks: KnowledgeChunk[] = [];
   let idx = 1;
 
-  for (const section of rawSections) {
+  for (const section of sections) {
     if (section.length <= 520) {
       chunks.push({
         id: `${docId}-chk-${idx++}`,
@@ -146,6 +163,16 @@ const SEMANTIC_SYNONYM_GROUPS: string[][] = [
   ['familia', 'amigos', 'familiar', 'leida', 'asussam', 'intoxicacao', 'agitacao'],
   ['mito', 'mitos', 'fatos', 'felicidade', 'preguica', 'periculosidade', 'alcool', 'binge'],
   ['depressao', 'psicose', 'esquizofrenia', 'loucura', 'delirios', 'alucinacoes', 'filmes', 'documentarios'],
+  // Grupos clínicos específicos das especialidades médicas (Urologia, Geriatria e Nefrologia)
+  ['prostata', 'psa', 'hpb', 'hiperplasia', 'toque', 'urologia', 'urologista', 'jato', 'nocturia', 'bexiga', 'sbu'],
+  ['calculo', 'calculos', 'pedra', 'pedras', 'litiase', 'colica', 'ureter', 'hematuria', 'urina', 'itu', 'ardencia', 'disuria'],
+  ['vasectomia', 'testosterona', 'disfuncao', 'eretil', 'andrologia', 'incontinencia', 'testicular', 'torcao', 'priapismo'],
+  ['geriatria', 'geriatra', 'idoso', 'idosa', 'envelhecimento', 'longevidade', 'aga', 'fragilidade', 'autonomia', 'cuidador', 'sbgg'],
+  ['queda', 'quedas', 'equilibrio', 'sarcopenia', 'musculo', 'forca', 'osteoporose', 'fratura', 'mobilidade', 'tapete'],
+  ['polifarmacia', 'desprescricao', 'beers', 'interacao', 'memoria', 'cognicao', 'demencia', 'alzheimer', 'delirium', 'confusao', 'vacina'],
+  ['nefrologia', 'nefrologista', 'rim', 'rins', 'renal', 'creatinina', 'tfg', 'filtracao', 'glomerular', 'albuminuria', 'ureia', 'drc', 'kdigo', 'sbn'],
+  ['hipertensao', 'pressao', 'diabetes', 'glicemia', 'nefroprotecao', 'aine', 'antiinflamatorio', 'anti-inflamatorio', 'contraste', 'edema', 'inchaco'],
+  ['potassio', 'fosforo', 'sodio', 'sal', 'hidratacao', 'agua', 'dialise', 'hemodialise', 'peritoneal', 'transplante', 'espuma'],
 ];
 
 function expandQueryTerms(terms: string[]): string[] {
@@ -175,15 +202,17 @@ export function searchKnowledgeBase(
   if (rawTerms.length === 0) return [];
   const expandedTerms = expandQueryTerms(rawTerms);
 
-  // Prepara corpus de chunks do avatar e calcula frequência documental (DF/IDF)
+  // Prepara corpus de chunks do avatar (ignorando chunks apenas de título) e calcula DF/IDF
   const corpus = avatarDocs.flatMap((doc) => {
     const titleTerms = new Set(extractTerms(doc.title));
-    return doc.chunks.map((chunk) => {
-      const chunkTerms = extractTerms(chunk.text);
-      const chunkTermSet = new Set(chunkTerms);
-      const headingTerms = new Set(extractTerms(chunk.text.split('\n')[0] || ''));
-      return { doc, chunk, titleTerms, chunkTerms, chunkTermSet, headingTerms };
-    });
+    return doc.chunks
+      .filter((chunk) => hasNonHeadingBody(chunk.text))
+      .map((chunk) => {
+        const chunkTerms = extractTerms(chunk.text);
+        const chunkTermSet = new Set(chunkTerms);
+        const headingTerms = new Set(extractTerms(chunk.text.split('\n')[0] || ''));
+        return { doc, chunk, titleTerms, chunkTerms, chunkTermSet, headingTerms };
+      });
   });
 
   const totalChunks = Math.max(1, corpus.length);
@@ -281,6 +310,17 @@ export function searchKnowledgeBase(
     .map((entry) => entry.citation);
 }
 
+function isMedicalSpecialistPersona(avatar: AvatarProfile): boolean {
+  return (
+    avatar.id === 'avatar-rafael-uro-photo' ||
+    avatar.id === 'avatar-beatriz-geriatria-photo' ||
+    avatar.id === 'avatar-eduardo-nefro-photo' ||
+    /urolog|geriatr|nefrolog|m[ée]dic[oa]\s+(urolog|geriatr|nefrolog)/i.test(
+      `${avatar.roleTitle} ${avatar.guardrails.systemRolePrompt}`
+    )
+  );
+}
+
 // Compilador do Prompt Harness (Nível 1 Preventivo) no estilo Gemini Live / GPT Live Voice Mode
 export function compileSystemInstruction(
   avatar: AvatarProfile,
@@ -295,6 +335,7 @@ export function compileSystemInstruction(
     /psic[óo]log|acolhimento psicol[óo]gico|sa[úu]de mental/i.test(
       `${avatar.roleTitle} ${g.systemRolePrompt}`
     );
+  const isMedicalPersona = isMedicalSpecialistPersona(avatar);
 
   const formalityDesc =
     g.formalityLevel >= 75
@@ -348,6 +389,8 @@ export function compileSystemInstruction(
 
   const clinicalPriorityRule = isClinicalSupportPersona
     ? `7. PRIORIDADE CLÍNICA E ÉTICA: Sempre priorize segurança emocional, escuta não julgadora e autonomia. Nunca invente estatísticas, nunca patologize dificuldades comuns nem minimize sofrimento grave. Diante de indícios de ideação suicida, autolesão ou crise aguda, avalie o risco de forma direta, calma e técnica e informe canais seguros (CVV 188, CAPS/UPA, SAMU 192).`
+    : isMedicalPersona
+    ? `7. PRIORIDADE MÉDICA E ÉTICA (CFM/LGPD): Atue estritamente em educação em saúde e preparação para consulta. JAMAIS prescreva medicamentos, ajuste dosagens, suspenda tratamentos prescritos ou dê diagnóstico definitivo. Diante de qualquer sinal de alarme de urgência (dor testicular súbita, retenção urinária aguda, cólica renal com febre alta, sangramento urinário com coágulos, confusão mental súbita/delirium, queda com trauma na cabeça, sinais de AVC, parada súbita de urinar, dor no peito ou falta de ar intensa com inchaço), oriente imediatamente busca presencial de Pronto-Socorro/UPA ou SAMU 192.`
     : '';
 
   return [
@@ -645,6 +688,14 @@ export function inferEmotionAndGesture(
     return { emotion: 'alert', gesture: 'emphasis' };
   }
   const lower = text.toLowerCase();
+  if (
+    lower.includes('samu 192') ||
+    lower.includes('pronto-socorro imediato') ||
+    lower.includes('sinal de alarme') ||
+    lower.includes('urgência médica')
+  ) {
+    return { emotion: 'alert', gesture: 'emphasis' };
+  }
   if (lower.includes('olá') || lower.includes('bem-vind') || lower.includes('prazer')) {
     return { emotion: 'happy', gesture: 'wave' };
   }
@@ -661,7 +712,10 @@ export function inferEmotionAndGesture(
     lower.includes('não está sozinh') ||
     lower.includes('espaço seguro') ||
     lower.includes('sigilo') ||
-    lower.includes('cvv')
+    lower.includes('cvv') ||
+    lower.includes('qualidade de vida') ||
+    lower.includes('autonomia') ||
+    lower.includes('prevenção')
   ) {
     return { emotion: 'empathetic', gesture: 'nod' };
   }
@@ -788,6 +842,13 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
 const CRISIS_SIGNAL_REGEX =
   /\b(suicid|me matar|tirar a propria vida|nao aguento mais viver|vontade de morrer|autoles|me cortar|me machucar|acabar com tudo|desistir de viver)\b/;
 
+const MEDICAL_RED_FLAG_REGEX =
+  /\b(torcao testicular|dor testicular subita|dor forte no testiculo|nao consigo urinar|parou de urinar|parei de urinar|anuria|priapismo|coagulos na urina|colica renal com febre|febre alta com calafrios|bateu a cabeca|bati a cabeca|desmaiou|perdeu a consciencia|boca torta|fala arrastada|fraqueza subita|confusao mental subita|ficou confuso de repente|dor no peito|falta de ar intensa)\b/;
+
+function isEducationalQuestionAboutRedFlags(qNorm: string): boolean {
+  return /^(quais|como diferenciar|o que e|o que sao|explique|qual a diferenca)\b/.test(qNorm);
+}
+
 // Motor Generativo Embutido: responde perguntas gerais fora da base de conhecimento e conduz o diálogo de volta ao foco do avatar
 function generateEmbeddedGenerativeWithFocusBridge(
   cleanQuery: string,
@@ -803,12 +864,25 @@ function generateEmbeddedGenerativeWithFocusBridge(
     /psic[óo]log|acolhimento psicol[óo]gico|sa[úu]de mental/i.test(
       `${avatar.roleTitle} ${avatar.guardrails.systemRolePrompt}`
     );
+  const isMedicalPersona = isMedicalSpecialistPersona(avatar);
 
   // Protocolo prioritário de acolhimento e segurança diante de indícios de crise grave / risco suicida
   if (isClinicalSupportPersona && CRISIS_SIGNAL_REGEX.test(qNorm)) {
     return formatNaturalSpokenReply(
       'Eu sinto muito que você esteja carregando uma dor tão intensa agora, e quero agradecer por confiar em compartilhar isso comigo. Você está em um lugar seguro neste momento e há alguém de confiança por perto? Se sentir risco imediato, por favor procure o CVV ligando grátis para o 188, o CAPS ou a UPA mais próxima, ou acione o SAMU pelo 192 — você não precisa atravessar isso sozinho.',
       4
+    );
+  }
+
+  // Protocolo prioritário de sinais de alarme médicos (Urologia, Geriatria e Nefrologia)
+  if (
+    isMedicalPersona &&
+    MEDICAL_RED_FLAG_REGEX.test(qNorm) &&
+    !isEducationalQuestionAboutRedFlags(qNorm)
+  ) {
+    return formatNaturalSpokenReply(
+      'O que você descreveu é um sinal de alarme que configura urgência médica e precisa de avaliação presencial imediata. Por favor, procure agora o Pronto-Socorro ou a UPA mais próxima, ou acione o SAMU 192 — não aguarde os sintomas passarem e não se automedique.',
+      3
     );
   }
 
@@ -834,12 +908,18 @@ function generateEmbeddedGenerativeWithFocusBridge(
     if (isClinicalSupportPersona) {
       return `Olá! Fico muito feliz em te receber aqui. Sou a ${avatar.name}, ${avatar.roleTitle}, e este é um espaço seguro e sem julgamentos — como você tem se sentido ultimamente?`;
     }
+    if (isMedicalPersona) {
+      return `Olá! É um prazer receber você. Sou ${avatar.name}, ${avatar.roleTitle}, e estou aqui para tirar dúvidas educativas sobre ${primaryTopics} — qual pergunta você gostaria de explorar hoje?`;
+    }
     return `Olá! Tudo ótimo por aqui. Sou ${avatar.name}, ${avatar.roleTitle}, e podemos conversar sobre qualquer dúvida ou focar diretamente em ${primaryTopics}.`;
   }
 
   if (/quem e voce|seu nome|o que voce faz|qual seu papel|sua funcao|apresente/.test(qNorm)) {
     if (isClinicalSupportPersona) {
       return `Sou a ${avatar.name}, psicóloga clínica e educacional especializada em acolhimento para estudantes de graduação e pós-graduação. Meu papel é construir com você um espaço seguro e confidencial para elaborar o que estiver pesando e fortalecer sua autonomia.`;
+    }
+    if (isMedicalPersona) {
+      return `Sou ${avatar.name}, ${avatar.roleTitle}. Meu papel é oferecer educação em saúde baseada em evidências sobre ${primaryTopics} e ajudar você a se preparar melhor para sua consulta médica, sempre respeitando a ética do CFM sem realizar prescrições.`;
     }
     return `Sou ${avatar.name}, ${avatar.roleTitle}. Posso bater papo com você sobre vários temas, sempre conectando com a nossa especialidade em ${primaryTopics}.`;
   }
@@ -944,15 +1024,29 @@ export function synthesizeGroundedResponse(
 
   let coreAnswer = '';
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
+  const normQuery = normalizeText(cleanQuery);
   const isClinicalCrisis =
     (avatar.id === 'avatar-samia-photo' ||
       /psic[óo]log|acolhimento psicol[óo]gico/i.test(avatar.roleTitle)) &&
-    CRISIS_SIGNAL_REGEX.test(normalizeText(cleanQuery));
+    CRISIS_SIGNAL_REGEX.test(normQuery);
+  const isMedicalRedFlag =
+    isMedicalSpecialistPersona(avatar) &&
+    MEDICAL_RED_FLAG_REGEX.test(normQuery) &&
+    !isEducationalQuestionAboutRedFlags(normQuery);
 
-  if (isClinicalCrisis) {
+  if (isClinicalCrisis || isMedicalRedFlag) {
     coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, 4);
   } else if (citations.length > 0) {
-    coreAnswer = extractConciseFactFromChunk(citations[0].excerpt, cleanQuery, maxSent);
+    for (const citation of citations) {
+      const candidate = extractConciseFactFromChunk(citation.excerpt, cleanQuery, maxSent);
+      if (candidate.trim().length > 0) {
+        coreAnswer = candidate;
+        break;
+      }
+    }
+    if (!coreAnswer) {
+      coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
+    }
   } else {
     // Mesmo fora da base de conhecimento, responde de forma generativa e traz a conversa de volta para o foco do discurso
     coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
@@ -960,7 +1054,7 @@ export function synthesizeGroundedResponse(
 
   const finalReply = formatNaturalSpokenReply(
     `${prefixPII}${visionNote}${coreAnswer}`,
-    isClinicalCrisis ? 4 : maxSent
+    isClinicalCrisis || isMedicalRedFlag ? 4 : maxSent
   );
 
   // Verifica também a saída no Guardrail Nível 2

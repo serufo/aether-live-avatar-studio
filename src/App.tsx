@@ -49,6 +49,7 @@ import {
   ChevronDown,
   Captions,
   RotateCcw,
+  Users,
 } from 'lucide-react';
 
 type ScreenMode = 'live_stage' | 'admin_config';
@@ -58,8 +59,37 @@ const STORAGE_KEY = 'aether_live_studio_state_v4';
 const PREVIOUS_SAMIA_DEFAULT_GREETING =
   'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.';
 
+function getPersonaQuickMeta(av: AvatarProfile): { shortName: string; specialty: string } {
+  const role = av.roleTitle.toLowerCase();
+  if (av.id === 'avatar-samia-photo' || role.includes('psicólog')) {
+    return { shortName: av.name, specialty: 'Psicologia' };
+  }
+  if (av.id === 'avatar-rafael-uro-photo' || role.includes('urolog')) {
+    return { shortName: 'Dr. Rafael', specialty: 'Urologia' };
+  }
+  if (av.id === 'avatar-beatriz-geriatria-photo' || role.includes('geriatr')) {
+    return { shortName: 'Dra. Beatriz', specialty: 'Geriatria' };
+  }
+  if (av.id === 'avatar-eduardo-nefro-photo' || role.includes('nefrolog')) {
+    return { shortName: 'Dr. Eduardo', specialty: 'Nefrologia' };
+  }
+  if (role.includes('governança clínica') || role.includes('lgpd')) {
+    return { shortName: 'Dra. Helena', specialty: 'Governança' };
+  }
+  const shortName = av.name.split(' ').slice(0, 2).join(' ');
+  const specialty =
+    av.visualMode === '3d'
+      ? '3D'
+      : av.visualMode === '2d'
+      ? '2D'
+      : av.visualMode === 'orb'
+      ? 'Orbe'
+      : '2.5D';
+  return { shortName, specialty };
+}
+
 export function App() {
-  // Estado Principal Persistente (com merge não destrutivo de novos avatares e documentos padrão)
+  // Estado Principal Persistente (com merge não destrutivo mantendo Sâmia como porta de entrada)
   const [avatars, setAvatars] = useState<AvatarProfile[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -79,9 +109,26 @@ export function App() {
           });
           const savedIds = new Set(savedList.map((a) => a.id));
           const missingDefaults = DEFAULT_AVATARS.filter((d) => !savedIds.has(d.id));
-          return missingDefaults.length > 0
-            ? [...missingDefaults, ...savedList]
-            : savedList;
+          const merged =
+            missingDefaults.length > 0 ? [...savedList, ...missingDefaults] : savedList;
+          // Mantém Sâmia sempre na primeira posição, seguida das especialidades médicas padrão
+          const samia = merged.find((a) => a.id === 'avatar-samia-photo');
+          if (samia) {
+            const medicalOrder = [
+              'avatar-rafael-uro-photo',
+              'avatar-beatriz-geriatria-photo',
+              'avatar-eduardo-nefro-photo',
+            ];
+            const medicalAvatars = medicalOrder
+              .map((id) => merged.find((a) => a.id === id))
+              .filter((a): a is AvatarProfile => Boolean(a));
+            const medicalSet = new Set(medicalOrder);
+            const rest = merged.filter(
+              (a) => a.id !== 'avatar-samia-photo' && !medicalSet.has(a.id)
+            );
+            return [samia, ...medicalAvatars, ...rest];
+          }
+          return merged;
         }
       }
     } catch {
@@ -90,25 +137,8 @@ export function App() {
     return DEFAULT_AVATARS;
   });
 
-  const [activeAvatarId, setActiveAvatarId] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const hadSamiaBefore =
-          Array.isArray(parsed.avatars) &&
-          parsed.avatars.some((a: AvatarProfile) => a.id === 'avatar-samia-photo');
-        // Na primeira carga após a adição da Sâmia, define Sâmia como avatar ativa padrão
-        if (!hadSamiaBefore) {
-          return 'avatar-samia-photo';
-        }
-        if (parsed.activeAvatarId) return parsed.activeAvatarId;
-      }
-    } catch {
-      // Fallback
-    }
-    return DEFAULT_AVATARS[0].id;
-  });
+  // Sâmia sempre atua como porta de entrada ao abrir o estúdio
+  const [activeAvatarId, setActiveAvatarId] = useState<string>(() => 'avatar-samia-photo');
 
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(() => {
     try {
@@ -1004,10 +1034,11 @@ export function App() {
             <div
               id="stage-live-subtitles"
               className={`clean-subtitle-caption ${
+                showDockOptions ? 'dock-open' : ''
+              } ${
                 turns[turns.length - 1].emotion === 'alert' ? 'caption-alert' : ''
               }`}
               style={{
-                bottom: showDockOptions ? '168px' : '78px',
                 pointerEvents: 'auto',
                 cursor: 'pointer',
               }}
@@ -1040,13 +1071,13 @@ export function App() {
           {showTranscript && (
             <div
               id="stage-transcript-panel"
+              className={`stage-transcript-floating ${showDockOptions ? 'dock-open' : ''}`}
               style={{
                 position: 'absolute',
-                bottom: showDockOptions ? '170px' : '80px',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: 'min(680px, calc(100vw - 20px))',
-                maxHeight: '46dvh',
+                maxHeight: '44dvh',
                 zIndex: 18,
                 background: 'rgba(11, 15, 25, 0.92)',
                 backdropFilter: 'blur(22px)',
@@ -1276,7 +1307,7 @@ export function App() {
                 title={
                   showDockOptions
                     ? 'Esconder opções adicionais'
-                    : 'Expandir opções (Legenda, Histórico, Câmera, Tela, Som, Config)'
+                    : 'Expandir opções (Legenda, Histórico, Câmera, Tela, Som, Config e Personas)'
                 }
               >
                 {showDockOptions ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
@@ -1284,87 +1315,139 @@ export function App() {
               </button>
             </div>
 
-            {/* LINHA 2 (Mostrada somente quando expandida pelo botão Opções): Botões com Legendas */}
+            {/* LINHA 2 e LINHA 3 (Mostradas somente quando expandidas pelo botão Opções) */}
             {showDockOptions && (
-              <div className="hud-secondary-options-row" id="stage-dock-options-row">
-                <button
-                  type="button"
-                  id="btn-toggle-subtitles"
-                  className={`hud-option-pill ${showSubtitles ? 'cam-active' : ''}`}
-                  onClick={() => setShowSubtitles((prev) => !prev)}
-                  title={
-                    showSubtitles
-                      ? 'Desativar legenda em tempo real na tela'
-                      : 'Ativar legenda em tempo real na tela'
-                  }
-                >
-                  <Captions size={15} />
-                  <span>Legenda</span>
-                </button>
+              <>
+                <div className="hud-secondary-options-row" id="stage-dock-options-row">
+                  <button
+                    type="button"
+                    id="btn-toggle-subtitles"
+                    className={`hud-option-pill ${showSubtitles ? 'cam-active' : ''}`}
+                    onClick={() => setShowSubtitles((prev) => !prev)}
+                    title={
+                      showSubtitles
+                        ? 'Desativar legenda em tempo real na tela'
+                        : 'Ativar legenda em tempo real na tela'
+                    }
+                  >
+                    <Captions size={15} />
+                    <span>Legenda</span>
+                  </button>
 
-                <button
-                  type="button"
-                  id="btn-toggle-transcript"
-                  className={`hud-option-pill ${showTranscript ? 'cam-active' : ''}`}
-                  onClick={() => setShowTranscript((prev) => !prev)}
-                  title={
-                    showTranscript
-                      ? 'Ocultar histórico de conversas'
-                      : 'Mostrar histórico de conversas (toque nos trechos para ouvir)'
-                  }
-                >
-                  <MessageSquare size={15} />
-                  <span>Histórico</span>
-                </button>
+                  <button
+                    type="button"
+                    id="btn-toggle-transcript"
+                    className={`hud-option-pill ${showTranscript ? 'cam-active' : ''}`}
+                    onClick={() => setShowTranscript((prev) => !prev)}
+                    title={
+                      showTranscript
+                        ? 'Ocultar histórico de conversas'
+                        : 'Mostrar histórico de conversas (toque nos trechos para ouvir)'
+                    }
+                  >
+                    <MessageSquare size={15} />
+                    <span>Histórico</span>
+                  </button>
 
-                <button
-                  type="button"
-                  id="btn-toggle-mute"
-                  className={`hud-option-pill ${isMuted ? 'muted-active' : ''}`}
-                  onClick={() => {
-                    const next = !isMuted;
-                    setIsMuted(next);
-                    audioEngineRef.current?.setMuted(next);
-                  }}
-                  title={isMuted ? 'Ativar áudio do avatar' : 'Silenciar áudio do avatar'}
-                >
-                  {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-                  <span>{isMuted ? 'Mudo' : 'Som'}</span>
-                </button>
+                  <button
+                    type="button"
+                    id="btn-toggle-mute"
+                    className={`hud-option-pill ${isMuted ? 'muted-active' : ''}`}
+                    onClick={() => {
+                      const next = !isMuted;
+                      setIsMuted(next);
+                      audioEngineRef.current?.setMuted(next);
+                    }}
+                    title={isMuted ? 'Ativar áudio do avatar' : 'Silenciar áudio do avatar'}
+                  >
+                    {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                    <span>{isMuted ? 'Mudo' : 'Som'}</span>
+                  </button>
 
-                <button
-                  type="button"
-                  id="btn-toggle-camera"
-                  className={`hud-option-pill ${cameraActive ? 'cam-active' : ''}`}
-                  onClick={toggleCamera}
-                  title="Compartilhar câmera com o avatar"
-                >
-                  {cameraActive ? <Video size={15} /> : <VideoOff size={15} />}
-                  <span>Câmera</span>
-                </button>
+                  <button
+                    type="button"
+                    id="btn-toggle-camera"
+                    className={`hud-option-pill ${cameraActive ? 'cam-active' : ''}`}
+                    onClick={toggleCamera}
+                    title="Compartilhar câmera com o avatar"
+                  >
+                    {cameraActive ? <Video size={15} /> : <VideoOff size={15} />}
+                    <span>Câmera</span>
+                  </button>
 
-                <button
-                  type="button"
-                  id="btn-toggle-screen"
-                  className={`hud-option-pill ${screenActive ? 'cam-active' : ''}`}
-                  onClick={toggleScreenShare}
-                  title="Compartilhar tela com o avatar"
-                >
-                  <MonitorUp size={15} />
-                  <span>Tela</span>
-                </button>
+                  <button
+                    type="button"
+                    id="btn-toggle-screen"
+                    className={`hud-option-pill ${screenActive ? 'cam-active' : ''}`}
+                    onClick={toggleScreenShare}
+                    title="Compartilhar tela com o avatar"
+                  >
+                    <MonitorUp size={15} />
+                    <span>Tela</span>
+                  </button>
 
-                <button
-                  type="button"
-                  id="btn-open-admin-studio"
-                  className="hud-option-pill"
-                  onClick={() => setScreenMode('admin_config')}
-                  title="Abrir tela de configuração e estúdio"
+                  <button
+                    type="button"
+                    id="btn-open-admin-studio"
+                    className="hud-option-pill"
+                    onClick={() => setScreenMode('admin_config')}
+                    title="Abrir tela de configuração e estúdio"
+                  >
+                    <Settings size={15} />
+                    <span>Config</span>
+                  </button>
+                </div>
+
+                {/* LINHA 3: Seletor Rápido de Personas */}
+                <div
+                  className="hud-persona-quick-row"
+                  id="stage-dock-persona-row"
+                  role="group"
+                  aria-label="Seletor rápido de personas"
                 >
-                  <Settings size={15} />
-                  <span>Config</span>
-                </button>
-              </div>
+                  <span className="hud-persona-row-label" title="Trocar persona rapidamente">
+                    <Users size={13} />
+                    <span>Personas</span>
+                  </span>
+                  <div className="hud-persona-quick-scroll">
+                    {avatars.map((av) => {
+                      const isCurrent = av.id === activeAvatar.id;
+                      const meta = getPersonaQuickMeta(av);
+                      return (
+                        <button
+                          key={av.id}
+                          type="button"
+                          id={`quick-persona-${av.id}`}
+                          className={`hud-persona-chip ${isCurrent ? 'persona-active' : ''}`}
+                          onClick={() => {
+                            if (!isCurrent) {
+                              handleSelectAvatar(av.id);
+                            }
+                          }}
+                          title={`${av.name} — ${av.roleTitle}`}
+                        >
+                          {av.visualMode === 'photorealistic' && av.visualPhoto.portraitUrl ? (
+                            <img
+                              src={av.visualPhoto.portraitUrl}
+                              alt=""
+                              className="hud-persona-avatar-thumb"
+                            />
+                          ) : (
+                            <span
+                              className="hud-persona-avatar-dot"
+                              style={{ background: av.visual3D.accentColor }}
+                            />
+                          )}
+                          <span className="hud-persona-chip-text">
+                            <strong>{meta.shortName}</strong>
+                            <small>{meta.specialty}</small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </main>

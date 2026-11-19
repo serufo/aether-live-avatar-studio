@@ -7,7 +7,14 @@ import {
   PhotoFaceLandmarks,
   VisemeWeights,
 } from '../../types/avatar';
-import { HELENA_LANDMARKS, MARCUS_LANDMARKS, SAMIA_LANDMARKS } from '../../data/defaultAvatars';
+import {
+  BEATRIZ_LANDMARKS,
+  EDUARDO_LANDMARKS,
+  HELENA_LANDMARKS,
+  MARCUS_LANDMARKS,
+  RAFAEL_LANDMARKS,
+  SAMIA_LANDMARKS,
+} from '../../data/defaultAvatars';
 
 interface Props {
   avatar: AvatarProfile;
@@ -16,21 +23,28 @@ interface Props {
   getVisemes: (dt: number) => VisemeWeights;
 }
 
+const PRESET_LANDMARKS: Record<string, PhotoFaceLandmarks> = {
+  samia: SAMIA_LANDMARKS,
+  rafael: RAFAEL_LANDMARKS,
+  beatriz: BEATRIZ_LANDMARKS,
+  eduardo: EDUARDO_LANDMARKS,
+  marcus: MARCUS_LANDMARKS,
+  helena: HELENA_LANDMARKS,
+};
+
 export function resolveAvatarLandmarks(avatar: AvatarProfile): PhotoFaceLandmarks {
   if (avatar.visualPhoto.landmarks) {
     return avatar.visualPhoto.landmarks;
   }
-  if (
-    avatar.visualPhoto.presetId === 'samia' ||
-    avatar.visualPhoto.portraitUrl.includes('samia')
-  ) {
-    return SAMIA_LANDMARKS;
+  const byPreset = PRESET_LANDMARKS[avatar.visualPhoto.presetId];
+  if (byPreset) {
+    return byPreset;
   }
-  if (
-    avatar.visualPhoto.presetId === 'marcus' ||
-    avatar.visualPhoto.portraitUrl.includes('marcus')
-  ) {
-    return MARCUS_LANDMARKS;
+  const url = avatar.visualPhoto.portraitUrl || '';
+  for (const [key, landmarks] of Object.entries(PRESET_LANDMARKS)) {
+    if (url.includes(key)) {
+      return landmarks;
+    }
   }
   return HELENA_LANDMARKS;
 }

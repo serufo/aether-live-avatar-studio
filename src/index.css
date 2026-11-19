@@ -199,6 +199,20 @@ body,
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  transition: bottom 0.18s ease;
+}
+
+.clean-subtitle-caption.dock-open {
+  bottom: 196px;
+}
+
+.stage-transcript-floating {
+  bottom: 80px;
+  transition: bottom 0.18s ease;
+}
+
+.stage-transcript-floating.dock-open {
+  bottom: 198px;
 }
 
 .clean-subtitle-caption.caption-alert {
@@ -244,7 +258,7 @@ body,
   display: block;
 }
 
-/* Barra Inferior Fluida em Duas Linhas (Sem corte no celular + Expansor de Opções) */
+/* Barra Inferior Fluida com Expansor de Opções e Seletor Rápido de Personas */
 .stage-bottom-hud-dock {
   position: absolute;
   bottom: 14px;
@@ -280,6 +294,126 @@ body,
   width: 100%;
   padding-top: 7px;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hud-persona-quick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hud-persona-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
+.hud-persona-quick-scroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1px;
+}
+
+.hud-persona-quick-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.hud-persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 4px 10px 4px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hairline);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  flex-shrink: 0;
+  text-align: left;
+}
+
+.hud-persona-chip:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.11);
+  border-color: var(--border-highlight);
+}
+
+.hud-persona-chip.persona-active {
+  background: var(--accent-cyan-soft);
+  color: var(--accent-cyan);
+  border-color: rgba(0, 240, 255, 0.55);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.16);
+}
+
+.hud-persona-avatar-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 22%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  flex-shrink: 0;
+}
+
+.hud-persona-chip.persona-active .hud-persona-avatar-thumb {
+  border-color: var(--accent-cyan);
+}
+
+.hud-persona-avatar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.hud-persona-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.hud-persona-chip-text strong {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.hud-persona-chip.persona-active .hud-persona-chip-text strong {
+  color: var(--accent-cyan);
+}
+
+.hud-persona-chip-text small {
+  font-size: 0.59rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.hud-persona-chip.persona-active .hud-persona-chip-text small {
+  color: rgba(0, 240, 255, 0.85);
 }
 
 .hud-labeled-btn {
@@ -1305,6 +1439,14 @@ body,
     padding: 7px 12px;
   }
 
+  .clean-subtitle-caption.dock-open {
+    bottom: 228px;
+  }
+
+  .stage-transcript-floating.dock-open {
+    bottom: 230px;
+  }
+
   .stage-bottom-hud-dock {
     bottom: 8px;
     width: calc(100vw - 16px);
@@ -1317,6 +1459,26 @@ body,
   .hud-secondary-options-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 5px;
+  }
+
+  .hud-persona-quick-row {
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .hud-persona-row-label span {
+    display: none;
+  }
+
+  .hud-persona-chip {
+    height: 36px;
+    padding: 3px 9px 3px 4px;
+    gap: 6px;
+  }
+
+  .hud-persona-avatar-thumb {
+    width: 24px;
+    height: 24px;
   }
 
   .hud-labeled-btn {

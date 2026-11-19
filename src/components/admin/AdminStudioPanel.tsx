@@ -6,7 +6,14 @@ import {
   RagCitation,
   VisualMode,
 } from '../../types/avatar';
-import { HELENA_LANDMARKS, MARCUS_LANDMARKS, SAMIA_LANDMARKS } from '../../data/defaultAvatars';
+import {
+  BEATRIZ_LANDMARKS,
+  EDUARDO_LANDMARKS,
+  HELENA_LANDMARKS,
+  MARCUS_LANDMARKS,
+  RAFAEL_LANDMARKS,
+  SAMIA_LANDMARKS,
+} from '../../data/defaultAvatars';
 import {
   detectLandmarksFromImageElement,
   resolveAvatarLandmarks,
@@ -656,35 +663,31 @@ export const AdminStudioPanel: React.FC<Props> = ({
                       className="field-select"
                       value={activeAvatar.visualPhoto.presetId}
                       onChange={(e) => {
-                        const preset = e.target.value as 'helena' | 'marcus' | 'samia' | 'custom';
-                        const url =
-                          preset === 'samia'
-                            ? 'avatars/samia.jpg'
-                            : preset === 'helena'
-                            ? 'avatars/helena.jpg'
-                            : preset === 'marcus'
-                            ? 'avatars/marcus.jpg'
-                            : activeAvatar.visualPhoto.portraitUrl;
-                        const presetLandmarks =
-                          preset === 'samia'
-                            ? SAMIA_LANDMARKS
-                            : preset === 'helena'
-                            ? HELENA_LANDMARKS
-                            : preset === 'marcus'
-                            ? MARCUS_LANDMARKS
-                            : activeAvatar.visualPhoto.landmarks;
+                        const preset = e.target.value as AvatarProfile['visualPhoto']['presetId'];
+                        const presetMap = {
+                          samia: { url: 'avatars/samia.jpg', landmarks: SAMIA_LANDMARKS },
+                          rafael: { url: 'avatars/rafael.jpg', landmarks: RAFAEL_LANDMARKS },
+                          beatriz: { url: 'avatars/beatriz.jpg', landmarks: BEATRIZ_LANDMARKS },
+                          eduardo: { url: 'avatars/eduardo.jpg', landmarks: EDUARDO_LANDMARKS },
+                          helena: { url: 'avatars/helena.jpg', landmarks: HELENA_LANDMARKS },
+                          marcus: { url: 'avatars/marcus.jpg', landmarks: MARCUS_LANDMARKS },
+                        } as const;
+                        const entry = preset !== 'custom' ? presetMap[preset] : null;
                         onUpdateAvatar({
                           ...activeAvatar,
                           visualPhoto: {
                             ...activeAvatar.visualPhoto,
                             presetId: preset,
-                            portraitUrl: url,
-                            landmarks: presetLandmarks,
+                            portraitUrl: entry ? entry.url : activeAvatar.visualPhoto.portraitUrl,
+                            landmarks: entry ? entry.landmarks : activeAvatar.visualPhoto.landmarks,
                           },
                         });
                       }}
                     >
                       <option value="samia">Sâmia (Psicóloga Clínica e Educacional HD)</option>
+                      <option value="rafael">Dr. Rafael Mendonça (Médico Urologista HD)</option>
+                      <option value="beatriz">Dra. Beatriz Vasconcelos (Médica Geriatra HD)</option>
+                      <option value="eduardo">Dr. Eduardo Nogueira (Médico Nefrologista HD)</option>
                       <option value="helena">Dra. Helena Monteiro (Estúdio Executivo HD)</option>
                       <option value="marcus">Dr. Marcus Silva (Arquiteto de Sistemas HD)</option>
                       <option value="custom">Retrato Customizado Enviado pelo Admin</option>
@@ -722,11 +725,18 @@ export const AdminStudioPanel: React.FC<Props> = ({
                         type="button"
                         className="btn-ghost-xs"
                         onClick={() => {
+                          const landmarksByPreset = {
+                            samia: SAMIA_LANDMARKS,
+                            rafael: RAFAEL_LANDMARKS,
+                            beatriz: BEATRIZ_LANDMARKS,
+                            eduardo: EDUARDO_LANDMARKS,
+                            marcus: MARCUS_LANDMARKS,
+                            helena: HELENA_LANDMARKS,
+                          } as const;
+                          const pid = activeAvatar.visualPhoto.presetId;
                           const defaultLm =
-                            activeAvatar.visualPhoto.presetId === 'samia'
-                              ? SAMIA_LANDMARKS
-                              : activeAvatar.visualPhoto.presetId === 'marcus'
-                              ? MARCUS_LANDMARKS
+                            pid !== 'custom' && pid in landmarksByPreset
+                              ? landmarksByPreset[pid]
                               : HELENA_LANDMARKS;
                           onUpdateAvatar({
                             ...activeAvatar,
