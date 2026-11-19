@@ -55,7 +55,7 @@ export interface PhotoFaceLandmarks {
 
 export interface VisualConfigPhoto {
   portraitUrl: string;
-  presetId: 'helena' | 'marcus' | 'custom';
+  presetId: 'helena' | 'marcus' | 'samia' | 'custom';
   warpIntensity: number;
   headMotionScale: number;
   naturalBlinkRate: number;

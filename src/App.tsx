@@ -56,14 +56,19 @@ type ScreenMode = 'live_stage' | 'admin_config';
 const STORAGE_KEY = 'aether_live_studio_state_v4';
 
 export function App() {
-  // Estado Principal Persistente
+  // Estado Principal Persistente (com merge não destrutivo de novos avatares e documentos padrão)
   const [avatars, setAvatars] = useState<AvatarProfile[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.avatars) && parsed.avatars.length > 0) {
-          return parsed.avatars;
+          const savedList = parsed.avatars as AvatarProfile[];
+          const savedIds = new Set(savedList.map((a) => a.id));
+          const missingDefaults = DEFAULT_AVATARS.filter((d) => !savedIds.has(d.id));
+          return missingDefaults.length > 0
+            ? [...missingDefaults, ...savedList]
+            : savedList;
         }
       }
     } catch {
@@ -77,6 +82,13 @@ export function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const hadSamiaBefore =
+          Array.isArray(parsed.avatars) &&
+          parsed.avatars.some((a: AvatarProfile) => a.id === 'avatar-samia-photo');
+        // Na primeira carga após a adição da Sâmia, define Sâmia como avatar ativa padrão
+        if (!hadSamiaBefore) {
+          return 'avatar-samia-photo';
+        }
         if (parsed.activeAvatarId) return parsed.activeAvatarId;
       }
     } catch {
@@ -91,7 +103,12 @@ export function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.documents)) {
-          return parsed.documents.map(ensureDocumentChunks);
+          const savedDocs = (parsed.documents as KnowledgeDocument[]).map(ensureDocumentChunks);
+          const savedDocIds = new Set(savedDocs.map((d) => d.id));
+          const missingDocs = DEFAULT_DOCUMENTS.filter((d) => !savedDocIds.has(d.id)).map(
+            ensureDocumentChunks
+          );
+          return missingDocs.length > 0 ? [...missingDocs, ...savedDocs] : savedDocs;
         }
       }
     } catch {

@@ -6,7 +6,7 @@ import {
   RagCitation,
   VisualMode,
 } from '../../types/avatar';
-import { HELENA_LANDMARKS, MARCUS_LANDMARKS } from '../../data/defaultAvatars';
+import { HELENA_LANDMARKS, MARCUS_LANDMARKS, SAMIA_LANDMARKS } from '../../data/defaultAvatars';
 import {
   detectLandmarksFromImageElement,
   resolveAvatarLandmarks,
@@ -656,15 +656,19 @@ export const AdminStudioPanel: React.FC<Props> = ({
                       className="field-select"
                       value={activeAvatar.visualPhoto.presetId}
                       onChange={(e) => {
-                        const preset = e.target.value as 'helena' | 'marcus' | 'custom';
+                        const preset = e.target.value as 'helena' | 'marcus' | 'samia' | 'custom';
                         const url =
-                          preset === 'helena'
+                          preset === 'samia'
+                            ? 'avatars/samia.jpg'
+                            : preset === 'helena'
                             ? 'avatars/helena.jpg'
                             : preset === 'marcus'
                             ? 'avatars/marcus.jpg'
                             : activeAvatar.visualPhoto.portraitUrl;
                         const presetLandmarks =
-                          preset === 'helena'
+                          preset === 'samia'
+                            ? SAMIA_LANDMARKS
+                            : preset === 'helena'
                             ? HELENA_LANDMARKS
                             : preset === 'marcus'
                             ? MARCUS_LANDMARKS
@@ -680,6 +684,7 @@ export const AdminStudioPanel: React.FC<Props> = ({
                         });
                       }}
                     >
+                      <option value="samia">Sâmia (Psicóloga Clínica e Educacional HD)</option>
                       <option value="helena">Dra. Helena Monteiro (Estúdio Executivo HD)</option>
                       <option value="marcus">Dr. Marcus Silva (Arquiteto de Sistemas HD)</option>
                       <option value="custom">Retrato Customizado Enviado pelo Admin</option>
@@ -718,7 +723,9 @@ export const AdminStudioPanel: React.FC<Props> = ({
                         className="btn-ghost-xs"
                         onClick={() => {
                           const defaultLm =
-                            activeAvatar.visualPhoto.presetId === 'marcus'
+                            activeAvatar.visualPhoto.presetId === 'samia'
+                              ? SAMIA_LANDMARKS
+                              : activeAvatar.visualPhoto.presetId === 'marcus'
                               ? MARCUS_LANDMARKS
                               : HELENA_LANDMARKS;
                           onUpdateAvatar({

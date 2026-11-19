@@ -116,6 +116,12 @@ const SEMANTIC_SYNONYM_GROUPS: string[][] = [
   ['zerotrust', 'zero', 'trust', 'mtls', 'pod', 'container', 'isolamento', 'rede', 'certificado', 'seguranca'],
   ['risco', 'var', 'perda', 'carteira', 'fundo', 'limite', 'volatilidade', 'alavancagem', 'stress'],
   ['liquidez', 'caixa', 'dinheiro', 'ativo', 'soberano', 'resgate', 'colchao'],
+  ['ansiedade', 'estresse', 'burnout', 'esgotamento', 'cansaco', 'pressao', 'prova', 'prazo', 'perfeccionismo', 'panico'],
+  ['universidade', 'faculdade', 'graduacao', 'pos', 'mestrado', 'doutorado', 'academico', 'orientador', 'evasao', 'permanencia'],
+  ['acolhimento', 'psicoterapia', 'terapia', 'escuta', 'rogers', 'tcc', 'mindfulness', 'autocompaixao', 'psicoeducacao'],
+  ['sigilo', 'etica', 'cfp', 'coordenacao', 'professor', 'familia', 'andifes', 'mec', 'sus', 'raps'],
+  ['suicidio', 'autolesao', 'crise', 'risco', 'desistir', 'desespero', 'cvv', 'caps', 'emergencia', 'protecao'],
+  ['cotista', 'racismo', 'lgbtqia', 'deficiencia', 'indigena', 'quilombola', 'interseccionalidade', 'pertencimento', 'geracao'],
 ];
 
 function expandQueryTerms(terms: string[]): string[] {
@@ -206,6 +212,11 @@ export function compileSystemInstruction(
   const g = avatar.guardrails;
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
   const focusTopics = g.allowedTopics.slice(0, 3).join(', ');
+  const isClinicalSupportPersona =
+    avatar.id === 'avatar-samia-photo' ||
+    /psic[óo]log|acolhimento psicol[óo]gico|sa[úu]de mental/i.test(
+      `${avatar.roleTitle} ${g.systemRolePrompt}`
+    );
 
   const formalityDesc =
     g.formalityLevel >= 75
@@ -233,6 +244,14 @@ export function compileSystemInstruction(
         activeCitations.map((c) => c.excerpt).join('\n\n')
       : '';
 
+  const languageRule = isClinicalSupportPersona
+    ? `Responda no mesmo idioma utilizado pela pessoa (usando português do Brasil ${g.responseLanguage} por padrão), com linguagem acessível, tom ${formalityDesc} e ${empathyDesc}.`
+    : `Escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}.`;
+
+  const clinicalPriorityRule = isClinicalSupportPersona
+    ? `7. PRIORIDADE CLÍNICA E ÉTICA: Sempre priorize segurança emocional, escuta não julgadora e autonomia. Nunca invente estatísticas, nunca patologize dificuldades comuns nem minimize sofrimento grave. Diante de indícios de ideação suicida, autolesão ou crise aguda, avalie o risco de forma direta, calma e técnica e informe canais seguros (CVV 188, CAPS/UPA, SAMU 192).`
+    : '';
+
   return [
     `Você está em uma conversa de voz ao vivo em tempo real (estilo Gemini Live / GPT Live).`,
     `Sua identidade: Você é ${avatar.name}, ${avatar.roleTitle}.`,
@@ -241,11 +260,12 @@ export function compileSystemInstruction(
     ``,
     `=== COMO CONVERSAR AO VIVO (ESTILO GEMINI LIVE / GPT VOICE) ===`,
     `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Entenda a intenção real do usuário e responda diretamente ao ponto com inteligência e naturalidade.`,
-    `2. QUANDO A PERGUNTA ESTIVER NA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Incorpore esses números e fatos naturalmente na sua fala como conhecimento próprio.`,
+    `2. QUANDO A PERGUNTA ESTIVER NA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Incorpore esses conhecimentos naturalmente na sua fala como experiência própria.`,
     `3. QUANDO A PERGUNTA NÃO ESTIVER NA BASE DE CONHECIMENTO (RESPONDA E TRAGA PARA O FOCO DO DISCURSO): Se o usuário perguntar sobre assuntos gerais, curiosidades, cotidiano, tecnologia, opinião ou qualquer tema fora da sua base de conhecimento, NUNCA ignore a pergunta e NUNCA diga apenas que não sabe. Primeiro responda à questão do usuário de forma simpática, útil e direta usando seu conhecimento geral generativo (em 1 frase clara) e, logo em seguida, faça uma ponte natural trazendo a conversa de volta para o foco principal do seu discurso (${focusTopics}).`,
-    `4. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. Escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}. JAMAIS use asteriscos (**), hashtags (#), listas ou Markdown. JAMAIS diga frases robóticas como "Com base no documento" ou "Segundo a base de conhecimento".`,
-    `5. RITMO CONVERSACIONAL IDEAL: Responda em 2 a 3 frases fluidas e bem construídas (cerca de 25 a 65 palavras).`,
+    `4. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. ${languageRule} JAMAIS use asteriscos (**), hashtags (#), listas ou Markdown. JAMAIS diga frases robóticas como "Com base no documento" ou "Segundo a base de conhecimento".`,
+    `5. RITMO CONVERSACIONAL IDEAL: Responda em 2 a ${Math.max(3, g.maxResponseSentences)} frases fluidas e bem construídas (cerca de 25 a 75 palavras).`,
     `6. GUARDRAILS DE SEGURANÇA: Recuse com educação apenas se o usuário pedir explicitamente algo dos tópicos proibidos (${g.blockedTopics.join(', ') || 'Nenhum'}).`,
+    clinicalPriorityRule,
     knowledgeMemoryBlock,
     priorityRagBlock,
   ]
@@ -518,7 +538,18 @@ export function inferEmotionAndGesture(
   if (lower.includes('surpre') || lower.includes('incrível') || lower.includes('impressionante')) {
     return { emotion: 'surprised', gesture: 'emphasis' };
   }
-  if (lower.includes('compreendo') || lower.includes('importante cuidar') || lower.includes('ética')) {
+  if (
+    lower.includes('compreendo') ||
+    lower.includes('importante cuidar') ||
+    lower.includes('ética') ||
+    lower.includes('acolh') ||
+    lower.includes('escuta') ||
+    lower.includes('faz sentido') ||
+    lower.includes('não está sozinh') ||
+    lower.includes('espaço seguro') ||
+    lower.includes('sigilo') ||
+    lower.includes('cvv')
+  ) {
     return { emotion: 'empathetic', gesture: 'nod' };
   }
   if (hasCitations || lower.includes('segundo') || lower.includes('de acordo com') || lower.includes('%')) {
@@ -639,6 +670,9 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
   return formatNaturalSpokenReply(chosen.join(' '), limit);
 }
 
+const CRISIS_SIGNAL_REGEX =
+  /\b(suicid|me matar|tirar a propria vida|nao aguento mais viver|vontade de morrer|autoles|me cortar|me machucar|acabar com tudo|desistir de viver)\b/;
+
 // Motor Generativo Embutido: responde perguntas gerais fora da base de conhecimento e conduz o diálogo de volta ao foco do avatar
 function generateEmbeddedGenerativeWithFocusBridge(
   cleanQuery: string,
@@ -649,6 +683,19 @@ function generateEmbeddedGenerativeWithFocusBridge(
   const qNorm = normalizeText(cleanQuery);
   const primaryTopics = avatar.guardrails.allowedTopics.slice(0, 2).join(' e ');
   const mainTopic = avatar.guardrails.allowedTopics[0] || avatar.roleTitle;
+  const isClinicalSupportPersona =
+    avatar.id === 'avatar-samia-photo' ||
+    /psic[óo]log|acolhimento psicol[óo]gico|sa[úu]de mental/i.test(
+      `${avatar.roleTitle} ${avatar.guardrails.systemRolePrompt}`
+    );
+
+  // Protocolo prioritário de acolhimento e segurança diante de indícios de crise grave / risco suicida
+  if (isClinicalSupportPersona && CRISIS_SIGNAL_REGEX.test(qNorm)) {
+    return formatNaturalSpokenReply(
+      'Eu sinto muito que você esteja carregando uma dor tão intensa agora, e quero agradecer por confiar em compartilhar isso comigo. Você está em um lugar seguro neste momento e há alguém de confiança por perto? Se sentir risco imediato, por favor procure o CVV ligando grátis para o 188, o CAPS ou a UPA mais próxima, ou acione o SAMU pelo 192 — você não precisa atravessar isso sozinho.',
+      4
+    );
+  }
 
   // Extrai um gancho real e enxuto da base de conhecimento para enriquecer a ponte temática quando pedido exemplo
   let docFactSnippet = '';
@@ -669,10 +716,16 @@ function generateEmbeddedGenerativeWithFocusBridge(
   let focusBridge = `Trazendo para o nosso foco em ${primaryTopics}, quer que eu te mostre como aplicamos isso na prática?`;
 
   if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|e ai)\b/.test(qNorm)) {
+    if (isClinicalSupportPersona) {
+      return `Olá! Fico muito feliz em te receber aqui. Sou a ${avatar.name}, ${avatar.roleTitle}, e este é um espaço seguro e sem julgamentos — como você tem se sentido ultimamente?`;
+    }
     return `Olá! Tudo ótimo por aqui. Sou ${avatar.name}, ${avatar.roleTitle}, e podemos conversar sobre qualquer dúvida ou focar diretamente em ${primaryTopics}.`;
   }
 
   if (/quem e voce|seu nome|o que voce faz|qual seu papel|sua funcao|apresente/.test(qNorm)) {
+    if (isClinicalSupportPersona) {
+      return `Sou a ${avatar.name}, psicóloga clínica e educacional especializada em acolhimento para estudantes de graduação e pós-graduação. Meu papel é construir com você um espaço seguro e confidencial para elaborar o que estiver pesando e fortalecer sua autonomia.`;
+    }
     return `Sou ${avatar.name}, ${avatar.roleTitle}. Posso bater papo com você sobre vários temas, sempre conectando com a nossa especialidade em ${primaryTopics}.`;
   }
 
@@ -680,7 +733,17 @@ function generateEmbeddedGenerativeWithFocusBridge(
     return `Imagina, fico feliz em ajudar! Seguindo aqui no nosso tema de ${mainTopic}, tem mais algum ponto ou curiosidade que você queira explorar?`;
   }
 
-  if (/clima|tempo|chuva|sol|frio|calor|temperatura/.test(qNorm)) {
+  if (
+    isClinicalSupportPersona &&
+    /ansios|triste|sozinh|cansad|esgotad|burnout|prova|prazo|faculdade|universidade|orientador|tcc|mestrado|doutorado|pressao|culpa|medo|nao perten/.test(
+      qNorm
+    )
+  ) {
+    directAnswer =
+      'Faz muito sentido você se sentir assim diante de tanta cobrança e transformação na vida universitária, e o que você está sentindo merece ser ouvido com cuidado, sem minimizar nem rotular apressadamente.';
+    focusBridge =
+      'Se quiser, me conta o que tem pesado mais na sua rotina acadêmica ou emocional nesta semana para pensarmos juntos em caminhos possíveis no seu ritmo.';
+  } else if (/clima|tempo|chuva|sol|frio|calor|temperatura/.test(qNorm)) {
     directAnswer = 'O clima sempre influencia bastante a nossa rotina e disposição ao longo do dia.';
     focusBridge = `E por falar em manter o ritmo com estabilidade, aqui na nossa área de ${primaryTopics} buscamos essa mesma previsibilidade; quer explorar algum ponto sobre isso?`;
   } else if (/cafe|almoco|jantar|comida|fome|bebida|receita|culinaria/.test(qNorm)) {
@@ -766,15 +829,24 @@ export function synthesizeGroundedResponse(
 
   let coreAnswer = '';
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
+  const isClinicalCrisis =
+    (avatar.id === 'avatar-samia-photo' ||
+      /psic[óo]log|acolhimento psicol[óo]gico/i.test(avatar.roleTitle)) &&
+    CRISIS_SIGNAL_REGEX.test(normalizeText(cleanQuery));
 
-  if (citations.length > 0) {
+  if (isClinicalCrisis) {
+    coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, 4);
+  } else if (citations.length > 0) {
     coreAnswer = extractConciseFactFromChunk(citations[0].excerpt, cleanQuery, maxSent);
   } else {
     // Mesmo fora da base de conhecimento, responde de forma generativa e traz a conversa de volta para o foco do discurso
     coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
   }
 
-  const finalReply = formatNaturalSpokenReply(`${prefixPII}${visionNote}${coreAnswer}`, maxSent);
+  const finalReply = formatNaturalSpokenReply(
+    `${prefixPII}${visionNote}${coreAnswer}`,
+    isClinicalCrisis ? 4 : maxSent
+  );
 
   // Verifica também a saída no Guardrail Nível 2
   const outputCheck = evaluateRealtimeGuardrails(finalReply, 'avatar_output', avatar);

@@ -7,7 +7,7 @@ import {
   PhotoFaceLandmarks,
   VisemeWeights,
 } from '../../types/avatar';
-import { HELENA_LANDMARKS, MARCUS_LANDMARKS } from '../../data/defaultAvatars';
+import { HELENA_LANDMARKS, MARCUS_LANDMARKS, SAMIA_LANDMARKS } from '../../data/defaultAvatars';
 
 interface Props {
   avatar: AvatarProfile;
@@ -19,6 +19,12 @@ interface Props {
 export function resolveAvatarLandmarks(avatar: AvatarProfile): PhotoFaceLandmarks {
   if (avatar.visualPhoto.landmarks) {
     return avatar.visualPhoto.landmarks;
+  }
+  if (
+    avatar.visualPhoto.presetId === 'samia' ||
+    avatar.visualPhoto.portraitUrl.includes('samia')
+  ) {
+    return SAMIA_LANDMARKS;
   }
   if (
     avatar.visualPhoto.presetId === 'marcus' ||

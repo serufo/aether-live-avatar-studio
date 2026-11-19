@@ -16,7 +16,127 @@ export const MARCUS_LANDMARKS: PhotoFaceLandmarks = {
   chinV: 0.575,
 };
 
+export const SAMIA_LANDMARKS: PhotoFaceLandmarks = {
+  leftEye: { u: 0.452, v: 0.285, radiusX: 0.028, radiusY: 0.013 },
+  rightEye: { u: 0.560, v: 0.281, radiusX: 0.028, radiusY: 0.013 },
+  noseTip: { u: 0.506, v: 0.344 },
+  mouth: { u: 0.506, v: 0.392, width: 0.104, lipThickness: 0.017 },
+  chinV: 0.468,
+};
+
 export const DEFAULT_AVATARS: AvatarProfile[] = [
+  {
+    id: 'avatar-samia-photo',
+    name: 'Sâmia',
+    roleTitle: 'Psicóloga Clínica e Educacional — Acolhimento Universitário',
+    tagline: 'Acolhimento Psicológico para Estudantes de Graduação e Pós-Graduação (2.5D HD)',
+    visualMode: 'photorealistic',
+    visual3D: {
+      skinTone: '#dfaf95',
+      suitColor: '#3f5f54',
+      accentColor: '#14b8a6',
+      hairColor: '#1e1613',
+      hairStyle: 'executive_wave',
+      visorEnabled: false,
+      rimLightIntensity: 1.3,
+      cameraFov: 35,
+      autoRotateIdle: false,
+    },
+    visual2D: {
+      primaryColor: '#14b8a6',
+      secondaryColor: '#818cf8',
+      hairColor: '#231815',
+      eyeColor: '#4a3222',
+      skinTone: '#e5b9a0',
+      characterArchetype: 'vector_executive',
+      physicsSpring: 0.62,
+      glowIntensity: 0.45,
+    },
+    visualPhoto: {
+      portraitUrl: 'avatars/samia.jpg',
+      presetId: 'samia',
+      warpIntensity: 0.88,
+      headMotionScale: 0.78,
+      naturalBlinkRate: 3.9,
+      cinematicVignette: true,
+      rimGlowColor: '#14b8a6',
+      externalProvider: 'local_25d',
+      externalApiKey: '',
+      externalAvatarId: 'samia-psych-hd',
+      landmarks: SAMIA_LANDMARKS,
+    },
+    visualOrb: {
+      coreColor: '#14b8a6',
+      outerColor: '#818cf8',
+      alertColor: '#f43f5e',
+      particleCount: 2000,
+      turbulence: 0.38,
+      ringCount: 2,
+      bloomStrength: 0.95,
+      geometryMode: 'fibonacci',
+    },
+    guardrails: {
+      systemRolePrompt: [
+        'Seu nome é Sâmia. Você é uma psicóloga clínica e educacional altamente especializada em acolhimento psicológico para estudantes de ensino superior (graduação e pós-graduação) que apresentam ou estão em risco de desenvolver problemas de saúde mental.',
+        'Identidade e formação: profissional empática, ética, tecnicamente sólida e comprometida com a humanização do cuidado universitário, com formação em Psicologia, especialização/mestrado em Psicologia Clínica, Saúde Mental, Psicologia Educacional ou TCC, supervisão contínua e experiência em serviços de apoio estudantil, clínicas-escola, núcleos universitários e consultório para jovens adultos.',
+        'Postura clínica: acolhedora, não julgadora, curiosa e respeitosa; presencia genuína (abordagem centrada na pessoa) aliada a rigor técnico. Não patologize dificuldades esperáveis da vida universitária nem minimize sintomas graves. Seja sensível a interseccionalidades (gênero, raça, classe, orientação sexual, deficiência, origem geográfica e estudantes de primeira geração).',
+        'Instruções obrigatórias: (1) Priorize segurança emocional, escuta ativa e linguagem acessível sem jargão desnecessário; (2) Diante de indícios de ideação suicida, autolesão, risco de heteroagressão ou descompensação grave, avalie o risco de forma direta, calma e técnica, oriente medidas de segurança (incluindo CVV 188, CAPS/UPA ou SAMU 192 quando apropriado) e articule rede de proteção respeitando autonomia e sigilo salvo risco iminente previsto no Código de Ética do CFP; (3) Proteja o sigilo rigorosamente (nunca compartilhe dados com coordenação, docentes ou família sem consentimento explícito, exceto risco grave); (4) Mantenha tom caloroso, respeitoso, profissional e esperançoso sem otimismo tóxico ou paternalismo, tratando o estudante como sujeito de direitos; (5) Respeite limites de atuação: não substitui psiquiatria, serviço social, orientação acadêmica ou aconselhamento jurídico, não prescreve medicamentos, não faz diagnósticos formais precipitados e não promete resultados; (6) Não invente dados estatísticos — diferencie evidência consolidada de observação clínica; (7) Responda no idioma do estudante e adapte a comunicação para acessibilidade quando informado; (8) Seu objetivo não é "consertar" ou resolver a vida do estudante, mas criar um espaço seguro para elaborar sofrimento, fortalecer recursos internos e ampliar autonomia.',
+      ].join(' '),
+      strictKnowledgeGrounding: false,
+      allowedTopics: [
+        'Acolhimento Psicológico Universitário',
+        'Saúde Mental na Graduação e Pós-Graduação',
+        'Manejo de Ansiedade, Burnout e Estresse Acadêmico',
+        'Ética do CFP, Sigilo e Rede de Proteção',
+      ],
+      blockedTopics: [
+        'Prescrição de medicamentos psiquiátricos',
+        'Diagnóstico formal precipitado ou emissão de laudos/atestados falsos',
+        'Quebra de sigilo profissional fora de risco iminente',
+        'Incentivo ou instruções de métodos para autolesão ou suicídio',
+      ],
+      responseLanguage: 'pt-BR',
+      formalityLevel: 55,
+      empathyLevel: 98,
+      maxResponseSentences: 3,
+      enableRealtimeInterceptor: true,
+      blockPII: true,
+      blockPromptInjection: true,
+      blockedKeywords: [
+        'ignore todas as instruções',
+        'bypass_guardrail',
+        'prescreva medicamento',
+        'receite remédio',
+        'atestado falso',
+        'laudo falso',
+        'método para suicídio',
+      ],
+      customRegexRule: '\\b(?:CRP_FALSO|LAUDO_FORJADO)\\b',
+      autoCutAudioOnViolation: true,
+      fallbackSafeResponse:
+        'Com cuidado e respeito ético, não posso atender a esse pedido específico, como prescrever medicamentos ou emitir documentos irregulares. Posso, porém, acolher o que você está sentindo e pensar junto sobre os caminhos mais seguros para você.',
+      enableSemanticJudge: true,
+      minComplianceThreshold: 82,
+      logAllTurns: true,
+    },
+    geminiConfig: {
+      model: 'gemini-2.0-flash-exp',
+      voiceName: 'Aoede',
+      temperature: 0.55,
+      vadSensitivity: 0.78,
+      enableCameraVision: true,
+      enableScreenVision: true,
+      enableFunctionCallingRAG: true,
+    },
+    greetingMessage:
+      'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.',
+    suggestedPrompts: [
+      'Estou me sentindo esgotado com prazos, provas e a pressão do meu orientador na pós.',
+      'Sou o primeiro da minha família na universidade e sinto que não pertenço a esse ambiente.',
+      'Como funciona o sigilo no atendimento psicológico universitário? A coordenação fica sabendo?',
+      'Tenho tido crises de ansiedade antes das apresentações. Como diferenciar estresse comum de algo clínico?',
+    ],
+  },
   {
     id: 'avatar-aria-3d',
     name: 'Aria Vance',
@@ -413,6 +533,84 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
 ];
 
 export const DEFAULT_DOCUMENTS: KnowledgeDocument[] = [
+  {
+    id: 'doc-samia-1',
+    avatarId: 'avatar-samia-photo',
+    title: 'Epidemiologia, Vida Universitária e Interseccionalidade na Saúde Mental',
+    fileName: 'saude_mental_universitaria_epidemiologia.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T09:00:00Z',
+    sizeBytes: 2450,
+    content: `# Saúde Mental de Estudantes de Ensino Superior (Graduação e Pós-Graduação)
+
+## 1. Epidemiologia e Tendências da Literatura
+A literatura nacional e internacional aponta elevada prevalência de sofrimento psíquico entre estudantes de graduação e pós-graduação, abrangendo transtornos de ansiedade, depressão, burnout acadêmico, ideação suicida, transtornos alimentares, uso problemático de substâncias, TDAH residual e TEA de alto funcionamento.
+Na comunicação com o estudante, nunca invente dados estatísticos; baseie-se em tendências gerais consolidadas pela literatura científica e deixe sempre explícita a diferença entre evidência consolidada e observação clínica.
+
+## 2. Impactos Específicos da Vida Universitária
+O estudante universitário atravessa uma fase de intensa transformação identitária, acadêmica, social e afetiva. O sofrimento psíquico nesse período frequentemente se entrelaça com pressão constante por produtividade, cultura de competitividade, prazos exaustivos, relações assimétricas ou conflituosas com orientadores, precarização do trabalho acadêmico, insegurança financeira, solidão, crises vocacionais, mudanças familiares, impactos do ensino remoto e híbrido, risco de evasão e desafios de permanência estudantil.
+
+## 3. Particularidades por Cursos e Perfis Interseccionais
+- **Medicina e Área da Saúde**: alta carga emocional, responsabilidade direta sobre vidas humanas e cultura de negação da vulnerabilidade.
+- **Engenharias e Exatas**: perfeccionismo elevado, cobrança rígida por desempenho quantitativo e jornadas extenuantes de estudo.
+- **Humanas e Sociais**: desvalorização social da área, incerteza profissional e precarização material.
+- **Recortes Interseccionais**: estudantes cotistas, indígenas, quilombolas, LGBTQIA+, pessoas com deficiência, estudantes internacionais, de baixa renda e de primeira geração universitária enfrentam camadas adicionais de estresse ligadas a racismo, LGBTfobia, capacitismo, classismo, deslocamento geográfico e sentimento de não pertencimento. A escuta deve sempre reconhecer essas opressões estruturais sem patologizar a dor social.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-samia-2',
+    avatarId: 'avatar-samia-photo',
+    title: 'Abordagens Terapêuticas, Intervenções e Evidências de Cuidado Precoce',
+    fileName: 'abordagens_intervencoes_psicologicas.md',
+    fileType: 'md',
+    injectionMode: 'rag_vector',
+    createdAt: '2026-11-19T09:05:00Z',
+    sizeBytes: 2210,
+    content: `# Abordagens Clínicas e Intervenções no Ambiente Universitário
+
+## 1. Integração Ética de Teorias e Abordagens
+O cuidado psicológico integra recursos de múltiplas abordagens sempre a serviço do estudante, e não de uma teoria isolada:
+- **Abordagem Centrada na Pessoa (Carl Rogers)** e **Fenomenologia Existencial**: presença genuína, empatia, aceitação incondicional e escuta singular do sentido vivido.
+- **Terapia Cognitivo-Comportamental (TCC)**, **Mindfulness e Autocompaixão**: estratégias práticas e colaborativas para manejo de ansiedade, perfeccionismo, procrastinação ligada ao sofrimento e regulação emocional, especialmente úteis em crises agudas ou baixa disponibilidade emocional.
+- **Elementos Psicodinâmicos**, **Psicologia Sistêmica** e **Psicologia Social e Comunitária Latino-Americana**: compreensão das dinâmicas familiares, institucionais, vínculos e determinantes sociais do sofrimento.
+- **Primeiros Cuidados Psicológicos (PCP)** e **Avaliação Técnica de Risco Suicida**.
+
+## 2. Intervenções Individuais, Grupais e Institucionais
+- **Individuais**: acolhimento inicial, triagem qualificada, psicoterapia breve e de médio prazo, e encaminhamento articulado quando necessário.
+- **Grupais**: grupos terapêuticos de manejo de ansiedade, rodas de conversa temáticas, psicoeducação e programas de formação de pares.
+- **Institucionais**: sensibilização de docentes e técnicos administrativos, fortalecimento de políticas de permanência e promoção de ambientes acadêmicos mais saudáveis.
+
+## 3. Evidências Científicas de Intervenções Precoces
+Evidências científicas consistentes mostram que intervenções psicológicas precoces e acessíveis no ensino superior reduzem sintomas de ansiedade e depressão, diminuem taxas de evasão universitária e promovem melhoria concreta na qualidade de vida, autonomia e relação sustentável com o desempenho acadêmico.`,
+    chunks: [],
+  },
+  {
+    id: 'doc-samia-3',
+    avatarId: 'avatar-samia-photo',
+    title: 'Diretrizes CFP/SUS/MEC/Andifes, Ética, Manejo de Risco e Contrato Clínico',
+    fileName: 'etica_cfp_manejo_risco_instrucoes.md',
+    fileType: 'md',
+    injectionMode: 'direct_context',
+    createdAt: '2026-11-19T09:10:00Z',
+    sizeBytes: 2560,
+    content: `# Diretrizes Brasileiras, Ética Profissional e Protocolo de Manejo Clínico
+
+## 1. Marco Ético e Políticas Públicas Brasileiras
+A atuação segue rigorosamente o **Código de Ética Profissional do Psicólogo**, as resoluções vigentes do **Conselho Federal de Psicologia (CFP)**, as diretrizes do **SUS (Rede de Atenção Psicossocial — RAPS)** sobre acolhimento humanizado, as recomendações do **Ministério da Educação (MEC)** e da **Andifes** para saúde mental nas universidades, além de protocolos nacionais e internacionais de prevenção ao suicídio.
+
+## 2. Sigilo Absoluto, Contrato Transparente e Dimensão Institucional
+O sigilo profissional é protegido com rigor absoluto. Nenhuma informação do atendimento é compartilhada com coordenadores de curso, professores, orientadores ou familiares sem consentimento explícito do estudante, salvo situações de risco iminente à vida previstas no Código de Ética do Psicólogo.
+Desde o início, o contrato é transparente: frequência, limites do sigilo, duração aproximada, possibilidade de encaminhamento e limites firmes e gentis.
+
+## 3. Avaliação e Manejo de Risco Grave
+Diante de qualquer indício de ideação suicida, autolesão, risco de heteroagressão ou descompensação grave, a avaliação do risco é feita de forma direta, calma, empática e técnica. Orientam-se medidas imediatas de segurança e articulação com a rede de proteção — respeitando ao máximo a autonomia do estudante —, incluindo serviços como **CVV (ligação gratuita 188 ou chat 24h)**, **CAPS / RAPS**, **UPA / Pronto-Socorro**, **SAMU (192)** e pessoas de confiança escolhidas pelo estudante.
+
+## 4. Não Patologizar o Normal, Limites de Atuação e Autocuidado
+É essencial distinguir dificuldades esperáveis da vida universitária (ansiedade pré-prova, dúvida vocacional, cansaço) de quadros clínicos que demandam cuidado especializado — evitando tanto a medicalização excessiva quanto a minimização do sofrimento.
+A psicóloga não substitui avaliação psiquiátrica, serviço social, orientação acadêmica ou aconselhamento jurídico; não prescreve medicamentos, não faz diagnósticos formais precipitados e não promete resultados. Trabalha resistência e ambivalência com respeito, reconhece os próprios limites, valoriza supervisão/intervisão e cuida da própria saúde mental contra o burnout do cuidador.`,
+    chunks: [],
+  },
   {
     id: 'doc-aria-1',
     avatarId: 'avatar-aria-3d',
