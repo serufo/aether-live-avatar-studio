@@ -708,8 +708,8 @@ export const AdminStudioPanel: React.FC<Props> = ({
                   {/* Mapeamento Anatômico Interativo de Olhos e Boca na Foto */}
                   <div
                     style={{
-                      background: 'rgba(9, 13, 22, 0.78)',
-                      border: '1px solid rgba(0, 240, 255, 0.22)',
+                      background: 'var(--bg-studio-panel)',
+                      border: '1px solid var(--border-highlight)',
                       borderRadius: '10px',
                       padding: '12px',
                       display: 'flex',
@@ -718,7 +718,7 @@ export const AdminStudioPanel: React.FC<Props> = ({
                     }}
                   >
                     <div className="section-row-between">
-                      <span className="section-label" style={{ color: '#00f0ff' }}>
+                      <span className="section-label" style={{ color: 'var(--accent-cyan)' }}>
                         MAPEAMENTO DE OLHOS E BOCA NA FOTO
                       </span>
                       <button
@@ -770,15 +770,19 @@ export const AdminStudioPanel: React.FC<Props> = ({
                             flex: 1,
                             fontSize: '0.73rem',
                             padding: '5px 8px',
+                            border: '1px solid',
                             borderColor:
                               activeLandmarkTarget === pt.id
-                                ? '#00f0ff'
-                                : 'rgba(148, 163, 184, 0.25)',
+                                ? 'var(--accent-cyan)'
+                                : 'var(--border-hairline)',
                             background:
                               activeLandmarkTarget === pt.id
-                                ? 'rgba(0, 240, 255, 0.14)'
-                                : 'rgba(15, 23, 42, 0.6)',
-                            color: activeLandmarkTarget === pt.id ? '#00f0ff' : '#cbd5e1',
+                                ? 'var(--accent-cyan-soft)'
+                                : 'var(--bg-elevated)',
+                            color:
+                              activeLandmarkTarget === pt.id
+                                ? 'var(--accent-cyan)'
+                                : 'var(--text-secondary)',
                             borderRadius: '6px',
                             cursor: 'pointer',
                           }}

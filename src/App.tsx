@@ -64,11 +64,15 @@ import {
   RotateCcw,
   Users,
   FlaskConical,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 type ScreenMode = 'live_stage' | 'admin_config' | 'pacific_r';
+type ThemeMode = 'dark' | 'light';
 
 const STORAGE_KEY = 'aether_live_studio_state_v4';
+const THEME_STORAGE_KEY = 'aether_ui_theme';
 
 const PREVIOUS_SAMIA_DEFAULT_GREETINGS = new Set([
   'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.',
@@ -232,6 +236,30 @@ export function App() {
 
   const activeAvatar =
     avatars.find((a) => a.id === activeAvatarId) || avatars[0];
+
+  // Tema Visual (Escuro / Claro) persistente com alternância global instantânea
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {
+      // Ignore storage access errors
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // Ignore storage access errors
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   // Separação clara entre Tela de Splash, Palco Ao Vivo (padrão, limpo), Administração e Área PACIFIC-R (/pacific-r)
   const [showSplash, setShowSplash] = useState<boolean>(() => !isPacificRRoute());
@@ -1082,18 +1110,42 @@ export function App() {
     }
   };
 
+  const renderThemeToggleButton = () => {
+    const isLight = theme === 'light';
+    return (
+      <button
+        type="button"
+        id="btn-theme-toggle"
+        className={`floating-theme-toggle-btn ${isLight ? 'is-light' : 'is-dark'}`}
+        onClick={toggleTheme}
+        data-skip-auto-greeting="true"
+        aria-pressed={isLight}
+        aria-label={isLight ? 'Alternar para tema escuro' : 'Alternar para tema claro'}
+        title={isLight ? 'Alternar para tema escuro' : 'Alternar para tema claro'}
+      >
+        {isLight ? <Moon size={15} /> : <Sun size={15} />}
+        <span className="floating-theme-toggle-label">
+          {isLight ? 'Escuro' : 'Claro'}
+        </span>
+      </button>
+    );
+  };
+
   // ============================================================================
   // TELA 0: ÁREA DEDICADA DO PROJETO DE PESQUISA PACIFIC-R (/pacific-r)
   // ============================================================================
   if (screenMode === 'pacific_r') {
     return (
-      <PacificRWorkspace
-        geminiApiKey={geminiApiKey}
-        onExitToAetherStudio={() => {
-          audioEngineRef.current?.interrupt();
-          navigateScreenMode('live_stage');
-        }}
-      />
+      <>
+        {renderThemeToggleButton()}
+        <PacificRWorkspace
+          geminiApiKey={geminiApiKey}
+          onExitToAetherStudio={() => {
+            audioEngineRef.current?.interrupt();
+            navigateScreenMode('live_stage');
+          }}
+        />
+      </>
     );
   }
 
@@ -1103,6 +1155,7 @@ export function App() {
   if (screenMode === 'live_stage') {
     return (
       <div className="clean-stage-shell">
+        {renderThemeToggleButton()}
         {showSplash && (
           <AetherSplashScreen
             onPreUnlockAudio={handlePreUnlockAudioFromSplash}
@@ -1122,29 +1175,10 @@ export function App() {
             <button
               type="button"
               id="btn-unlock-initial-greeting"
+              className="stage-unlock-greeting-btn"
               onClick={() => playInitialGreeting(true)}
-              style={{
-                position: 'absolute',
-                top: '18px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 25,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 16px',
-                borderRadius: '999px',
-                border: '1px solid rgba(20, 184, 166, 0.55)',
-                background: 'rgba(10, 15, 28, 0.86)',
-                backdropFilter: 'blur(16px)',
-                color: '#f8fafc',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
-              }}
             >
-              <Volume2 size={16} color="#14b8a6" />
+              <Volume2 size={16} className="stage-unlock-greeting-icon" />
               <span>Toque na tela para ouvir a {activeAvatar.name}</span>
             </button>
           )}
@@ -1184,17 +1218,7 @@ export function App() {
                   : `${activeAvatar.name}: `}
               </span>
               <span>{turns[turns.length - 1].text}</span>
-              <span
-                style={{
-                  marginLeft: '8px',
-                  fontSize: '0.7rem',
-                  color: '#00f0ff',
-                  opacity: 0.85,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '3px',
-                }}
-              >
+              <span className="caption-replay-icon">
                 <Volume2 size={12} />
               </span>
             </div>
@@ -1205,36 +1229,8 @@ export function App() {
             <div
               id="stage-transcript-panel"
               className={`stage-transcript-floating ${showDockOptions ? 'dock-open' : ''}`}
-              style={{
-                position: 'absolute',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: 'min(680px, calc(100vw - 20px))',
-                maxHeight: '44dvh',
-                zIndex: 18,
-                background: 'rgba(11, 15, 25, 0.92)',
-                backdropFilter: 'blur(22px)',
-                border: '1px solid rgba(255, 255, 255, 0.14)',
-                borderRadius: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65)',
-              }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  color: '#94a3b8',
-                  gap: '8px',
-                }}
-              >
+              <div className="transcript-panel-header">
                 <span>
                   HISTÓRICO ({turns.length})
                   {sessionProfile.userName ? ` • ${sessionProfile.userName.toUpperCase()}` : ''} • TOQUE NO TRECHO PARA OUVIR
@@ -1242,15 +1238,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => setShowTranscript(false)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#94a3b8',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    padding: '2px',
-                  }}
+                  className="transcript-close-btn"
                   title="Fechar histórico de texto"
                 >
                   <X size={15} />
@@ -1262,60 +1250,32 @@ export function App() {
                 sessionProfile.campusOrUnit ||
                 sessionProfile.emotionalSignals.length > 0 ||
                 sessionProfile.thoughtChain.length > 0) && (
-                <div
-                  id="stage-session-profile-bar"
-                  style={{
-                    padding: '8px 14px',
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
-                    background: 'rgba(20, 184, 166, 0.08)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                    fontSize: '0.72rem',
-                    color: '#cbd5e1',
-                  }}
-                >
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                    <span style={{ color: '#2dd4bf', fontWeight: 700, fontSize: '0.67rem', letterSpacing: '0.04em' }}>
-                      PERFIL NA SESSÃO:
-                    </span>
+                <div id="stage-session-profile-bar" className="stage-session-profile-bar">
+                  <div className="profile-tags-row">
+                    <span className="profile-bar-label">PERFIL NA SESSÃO:</span>
                     {sessionProfile.userName && (
-                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(0, 240, 255, 0.16)', color: '#7dd3fc', fontWeight: 600 }}>
+                      <span className="profile-chip profile-chip-name">
                         Nome: {sessionProfile.userName}
                       </span>
                     )}
                     {sessionProfile.academicStage && (
-                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
-                        {sessionProfile.academicStage}
-                      </span>
+                      <span className="profile-chip">{sessionProfile.academicStage}</span>
                     )}
                     {sessionProfile.courseOrArea && (
-                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
-                        {sessionProfile.courseOrArea}
-                      </span>
+                      <span className="profile-chip">{sessionProfile.courseOrArea}</span>
                     )}
                     {sessionProfile.campusOrUnit && (
-                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
-                        {sessionProfile.campusOrUnit}
-                      </span>
+                      <span className="profile-chip">{sessionProfile.campusOrUnit}</span>
                     )}
                     {sessionProfile.emotionalSignals.slice(-2).map((sig) => (
-                      <span
-                        key={sig}
-                        style={{
-                          padding: '1px 7px',
-                          borderRadius: '999px',
-                          background: 'rgba(244, 114, 182, 0.14)',
-                          color: '#fbcfe8',
-                        }}
-                      >
+                      <span key={sig} className="profile-chip profile-chip-signal">
                         {sig}
                       </span>
                     ))}
                   </div>
                   {sessionProfile.thoughtChain.length > 0 && (
-                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', lineHeight: 1.35 }}>
-                      <strong style={{ color: '#5eead4' }}>
+                    <div className="profile-thought-chain">
+                      <strong className="profile-thought-label">
                         Cadeia de Pensamento (#{sessionProfile.thoughtChain[sessionProfile.thoughtChain.length - 1].turnIndex}):
                       </strong>{' '}
                       {sessionProfile.thoughtChain[sessionProfile.thoughtChain.length - 1].responseStrategy}
@@ -1323,17 +1283,15 @@ export function App() {
                   )}
                 </div>
               )}
-              <div
-                style={{
-                  padding: '12px 14px',
-                  overflowY: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                }}
-              >
+              <div className="transcript-turns-list">
                 {turns.map((turn) => {
                   const isReplayingThis = replayingTurnId === turn.id && isSpeaking;
+                  const speakerClass =
+                    turn.speaker === 'user'
+                      ? 'turn-user'
+                      : turn.emotion === 'alert'
+                      ? 'turn-alert'
+                      : 'turn-avatar';
                   return (
                     <div
                       key={turn.id}
@@ -1347,67 +1305,21 @@ export function App() {
                         }
                       }}
                       title="Clique para reproduzir o áudio deste trecho novamente"
-                      style={{
-                        alignSelf: turn.speaker === 'user' ? 'flex-end' : 'flex-start',
-                        maxWidth: '88%',
-                        padding: '9px 13px',
-                        borderRadius:
-                          turn.speaker === 'user'
-                            ? '14px 14px 4px 14px'
-                            : '14px 14px 14px 4px',
-                        background: isReplayingThis
-                          ? 'rgba(16, 185, 129, 0.22)'
-                          : turn.speaker === 'user'
-                          ? 'rgba(0, 240, 255, 0.14)'
-                          : turn.emotion === 'alert'
-                          ? 'rgba(255, 59, 92, 0.18)'
-                          : 'rgba(255, 255, 255, 0.07)',
-                        border: isReplayingThis
-                          ? '1px solid #10b981'
-                          : turn.speaker === 'user'
-                          ? '1px solid rgba(0, 240, 255, 0.32)'
-                          : turn.emotion === 'alert'
-                          ? '1px solid rgba(255, 59, 92, 0.4)'
-                          : '1px solid rgba(255, 255, 255, 0.12)',
-                        color: '#f8fafc',
-                        fontSize: '0.83rem',
-                        lineHeight: 1.45,
-                        cursor: 'pointer',
-                        transition: 'all 0.16s ease',
-                      }}
+                      className={`transcript-turn-bubble ${speakerClass} ${
+                        isReplayingThis ? 'turn-replaying' : ''
+                      }`}
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '10px',
-                          fontSize: '0.68rem',
-                          fontWeight: 600,
-                          marginBottom: '4px',
-                          color:
-                            turn.speaker === 'user'
-                              ? '#00f0ff'
-                              : turn.emotion === 'alert'
-                              ? '#ff3b5c'
-                              : '#10b981',
-                        }}
-                      >
+                      <div className={`transcript-turn-meta ${speakerClass}`}>
                         <span>
                           {turn.speaker === 'user'
                             ? sessionProfile.userName || 'Você'
                             : activeAvatar.name}{' '}
-                          <span style={{ opacity: 0.6, fontWeight: 400 }}>{turn.timestamp}</span>
+                          <span className="transcript-turn-time">{turn.timestamp}</span>
                         </span>
                         <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: isReplayingThis ? '#10b981' : '#94a3b8',
-                            fontSize: '0.65rem',
-                            fontWeight: 500,
-                          }}
+                          className={`transcript-replay-hint ${
+                            isReplayingThis ? 'is-active' : ''
+                          }`}
                         >
                           {isReplayingThis ? (
                             <>
@@ -1679,6 +1591,7 @@ export function App() {
   // ============================================================================
   return (
     <div className="app-shell admin-screen-shell">
+      {renderThemeToggleButton()}
       <header className="top-command-bar">
         <div className="brand-cluster">
           <div className="brand-orb-indicator" />
