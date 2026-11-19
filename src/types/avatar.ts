@@ -186,3 +186,26 @@ export interface ConversationTurn {
   modeUsed?: 'gemini_live_ws' | 'gemini_rest' | 'sandbox_neural';
   hasVisionFrame?: boolean;
 }
+
+export interface ThoughtChainStep {
+  turnIndex: number;
+  timestamp: string;
+  userIntent: string;
+  profileInsight: string;
+  continuityLink: string;
+  responseStrategy: string;
+}
+
+export interface ConversationUserProfile {
+  userName: string | null;
+  academicStage: string | null;
+  courseOrArea: string | null;
+  campusOrUnit: string | null;
+  emotionalSignals: string[];
+  discussedTopics: string[];
+  personalNotes: string[];
+  hasIntroducedAndAskedName: boolean;
+  turnCount: number;
+  thoughtChain: ThoughtChainStep[];
+}
+

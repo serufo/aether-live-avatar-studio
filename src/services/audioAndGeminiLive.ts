@@ -1,5 +1,6 @@
 import {
   AvatarProfile,
+  ConversationUserProfile,
   EmotionState,
   GestureState,
   KnowledgeDocument,
@@ -1076,6 +1077,9 @@ export class GeminiLiveSessionManager {
     hasActiveCamera: boolean;
     hasActiveScreen: boolean;
     recentTurns?: Array<{ speaker: 'user' | 'avatar' | 'system'; text: string }>;
+    sessionProfile?: ConversationUserProfile;
+    justLearnedName?: boolean;
+    isPureNameIntroduction?: boolean;
   }): Promise<{
     replyText: string;
     citations: RagCitation[];
@@ -1094,6 +1098,9 @@ export class GeminiLiveSessionManager {
       hasActiveCamera,
       hasActiveScreen,
       recentTurns = [],
+      sessionProfile,
+      justLearnedName = false,
+      isPureNameIntroduction = false,
     } = params;
 
     const inputGuard = evaluateRealtimeGuardrails(userText, 'user_input', avatar);
@@ -1109,16 +1116,22 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 5);
-    const maxSentences = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 4));
-    const systemInstruction = compileSystemInstruction(avatar, documents, citations);
-
     const validHistory = recentTurns
       .filter((t) => (t.speaker === 'user' || t.speaker === 'avatar') && t.text.trim().length > 0)
-      .slice(-8);
+      .slice(-20);
+
+    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 5);
+    const maxSentences = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 4));
+    const systemInstruction = compileSystemInstruction(
+      avatar,
+      documents,
+      citations,
+      sessionProfile,
+      validHistory
+    );
 
     if (this.apiKey) {
-      // Constrói histórico recente do diálogo limpo (sem tags artificiais) para manter fluxo natural estilo Gemini Live / GPT Live
+      // Constrói histórico completo da conversa até o momento (sem tags artificiais) para continuidade natural estilo Gemini Live / GPT Live
       const historyContents: Array<{
         role: 'user' | 'model';
         parts: Array<Record<string, unknown>>;
@@ -1177,7 +1190,7 @@ export class GeminiLiveSessionManager {
           const is25 = modelId.startsWith('gemini-2.5');
           const baseGenConfig: Record<string, unknown> = {
             temperature: Math.max(0.5, avatar.geminiConfig.temperature),
-            maxOutputTokens: 320,
+            maxOutputTokens: 420,
           };
 
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(
@@ -1190,8 +1203,9 @@ export class GeminiLiveSessionManager {
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemInstruction }] },
               contents: historyContents,
+              // Ativa cadeia de pensamentos interna silenciosa no Gemini 2.5 (partes .thought são filtradas antes de falar)
               generationConfig: is25
-                ? { ...baseGenConfig, thinkingConfig: { thinkingBudget: 0 } }
+                ? { ...baseGenConfig, thinkingConfig: { thinkingBudget: 256 } }
                 : baseGenConfig,
             }),
           });
@@ -1270,13 +1284,15 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    // Camada 3: Sintetizador Neural Local com Ponte para o Foco do Discurso (Offline Instantâneo)
+    // Camada 3: Sintetizador Neural Local com Memória de Perfil, Nome e Ponte para o Foco do Discurso (Offline Instantâneo)
     const localResult = synthesizeGroundedResponse(
       userText,
       avatar,
       documents,
       hasActiveCamera,
-      hasActiveScreen
+      hasActiveScreen,
+      sessionProfile,
+      { justLearnedName, isPureNameIntroduction }
     );
 
     return {
@@ -1325,7 +1341,17 @@ export class GeminiLiveSessionManager {
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system', content: systemInstruction },
       ];
-      for (const turn of validHistory.slice(-6)) {
+      const historySlice = validHistory.slice(-14);
+      // Evita duplicar o turno atual caso o último item do histórico já seja a fala atual do usuário
+      const lastItem = historySlice[historySlice.length - 1];
+      const dedupedHistory =
+        lastItem &&
+        lastItem.speaker === 'user' &&
+        lastItem.text.trim() === userText.trim()
+          ? historySlice.slice(0, -1)
+          : historySlice;
+
+      for (const turn of dedupedHistory) {
         messages.push({
           role: turn.speaker === 'user' ? 'user' : 'assistant',
           content: turn.text,

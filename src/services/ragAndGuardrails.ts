@@ -1,5 +1,6 @@
 import {
   AvatarProfile,
+  ConversationUserProfile,
   EmotionState,
   GestureState,
   GuardrailAuditEvent,
@@ -7,6 +8,7 @@ import {
   KnowledgeDocument,
   RagCitation,
 } from '../types/avatar';
+import { formatConversationContextForPrompt } from './conversationMemory';
 
 // Normalização linguística PT-BR / EN para busca vetorial híbrida (BM25 + N-gram Cosine)
 function normalizeText(text: string): string {
@@ -325,7 +327,9 @@ function isMedicalSpecialistPersona(avatar: AvatarProfile): boolean {
 export function compileSystemInstruction(
   avatar: AvatarProfile,
   documents: KnowledgeDocument[],
-  activeCitations: RagCitation[] = []
+  activeCitations: RagCitation[] = [],
+  sessionProfile?: ConversationUserProfile,
+  recentTurns: Array<{ speaker: 'user' | 'avatar' | 'system'; text: string }> = []
 ): string {
   const g = avatar.guardrails;
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
@@ -383,15 +387,25 @@ export function compileSystemInstruction(
         activeCitations.map((c) => `[${c.docTitle}]\n${c.excerpt}`).join('\n\n')
       : '';
 
+  const sessionMemoryBlock = formatConversationContextForPrompt(
+    sessionProfile,
+    recentTurns,
+    avatar.name
+  );
+
   const languageRule = isClinicalSupportPersona
     ? `Responda no mesmo idioma utilizado pela pessoa (usando português do Brasil ${g.responseLanguage} por padrão), com linguagem acessível, tom ${formalityDesc} e ${empathyDesc}.`
     : `Escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}.`;
 
   const clinicalPriorityRule = isClinicalSupportPersona
-    ? `7. PRIORIDADE CLÍNICA E ÉTICA: Sempre priorize segurança emocional, escuta não julgadora e autonomia. Nunca invente estatísticas, nunca patologize dificuldades comuns nem minimize sofrimento grave. Diante de indícios de ideação suicida, autolesão ou crise aguda, avalie o risco de forma direta, calma e técnica e informe canais seguros (CVV 188, CAPS/UPA, SAMU 192).`
+    ? `9. PRIORIDADE CLÍNICA E ÉTICA: Sempre priorize segurança emocional, escuta não julgadora e autonomia. Nunca invente estatísticas, nunca patologize dificuldades comuns nem minimize sofrimento grave. Diante de indícios de ideação suicida, autolesão ou crise aguda, avalie o risco de forma direta, calma e técnica e informe canais seguros (CVV 188, CAPS/UPA, SAMU 192, DAST UFMG).`
     : isMedicalPersona
-    ? `7. PRIORIDADE MÉDICA E ÉTICA (CFM/LGPD): Atue estritamente em educação em saúde e preparação para consulta. JAMAIS prescreva medicamentos, ajuste dosagens, suspenda tratamentos prescritos ou dê diagnóstico definitivo. Diante de qualquer sinal de alarme de urgência (dor testicular súbita, retenção urinária aguda, cólica renal com febre alta, sangramento urinário com coágulos, confusão mental súbita/delirium, queda com trauma na cabeça, sinais de AVC, parada súbita de urinar, dor no peito ou falta de ar intensa com inchaço), oriente imediatamente busca presencial de Pronto-Socorro/UPA ou SAMU 192.`
+    ? `9. PRIORIDADE MÉDICA E ÉTICA (CFM/LGPD): Atue estritamente em educação em saúde e preparação para consulta. JAMAIS prescreva medicamentos, ajuste dosagens, suspenda tratamentos prescritos ou dê diagnóstico definitivo. Diante de qualquer sinal de alarme de urgência (dor testicular súbita, retenção urinária aguda, cólica renal com febre alta, sangramento urinário com coágulos, confusão mental súbita/delirium, queda com trauma na cabeça, sinais de AVC, parada súbita de urinar, dor no peito ou falta de ar intensa com inchaço), oriente imediatamente busca presencial de Pronto-Socorro/UPA ou SAMU 192.`
     : '';
+
+  const nameBehaviorRule = sessionProfile?.userName
+    ? `7. USO DO NOME E PERFIL PERSONALIZADO: A pessoa com quem você está conversando se chama "${sessionProfile.userName}". Chame-a pelo próprio nome ("${sessionProfile.userName}") sempre que couber de forma natural e acolhedora, e adapte suas respostas ao perfil que ela vem revelando (curso, fase acadêmica, campus, emoções e histórico recente).`
+    : `7. APRESENTAÇÃO, NOME E PERFIL: Antes de aprofundar no tema (exceto se houver crise aguda ou risco imediato), apresente-se brevemente se necessário e pergunte gentilmente qual é o nome da pessoa para tornar a conversa mais próxima. Assim que ela disser o nome, registre mentalmente e passe a chamá-la pelo próprio nome, traçando seu perfil aos poucos para respostas cada vez mais assertivas e personalizadas.`;
 
   return [
     `Você está em uma conversa de voz ao vivo em tempo real (estilo Gemini Live / GPT Live).`,
@@ -400,13 +414,16 @@ export function compileSystemInstruction(
     `Foco Principal do seu Discurso: ${focusTopics}.`,
     ``,
     `=== COMO CONVERSAR AO VIVO (ESTILO GEMINI LIVE / GPT VOICE) ===`,
-    `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Entenda a intenção real do usuário e responda diretamente ao ponto com inteligência e naturalidade.`,
-    `2. QUANDO A PERGUNTA ESTIVER NA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Incorpore esses conhecimentos naturalmente na sua fala como experiência própria.`,
+    `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Leve em conta TODO o histórico desta conversa na janela de contexto para dar continuidade real ao diálogo, sem repetir o que já foi dito.`,
+    `2. QUANDO A PERGUNTA ESTIVER NA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, contatos, prazos e regras listados na sua memória abaixo. Incorpore esses conhecimentos naturalmente na sua fala como experiência própria.`,
     `3. QUANDO A PERGUNTA NÃO ESTIVER NA BASE DE CONHECIMENTO (RESPONDA E TRAGA PARA O FOCO DO DISCURSO): Se o usuário perguntar sobre assuntos gerais, curiosidades, cotidiano, tecnologia, opinião ou qualquer tema fora da sua base de conhecimento, NUNCA ignore a pergunta e NUNCA diga apenas que não sabe. Primeiro responda à questão do usuário de forma simpática, útil e direta usando seu conhecimento geral generativo (em 1 frase clara) e, logo em seguida, faça uma ponte natural trazendo a conversa de volta para o foco principal do seu discurso (${focusTopics}).`,
-    `4. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. ${languageRule} JAMAIS use asteriscos (**), hashtags (#), listas ou Markdown. JAMAIS diga frases robóticas como "Com base no documento" ou "Segundo a base de conhecimento".`,
-    `5. RITMO CONVERSACIONAL IDEAL: Responda em 2 a ${Math.max(3, g.maxResponseSentences)} frases fluidas e bem construídas (cerca de 25 a 75 palavras).`,
+    `4. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. ${languageRule} JAMAIS use asteriscos (**), hashtags (#), listas, rótulos de pensamento interno ou Markdown. JAMAIS diga frases robóticas como "Com base no documento" ou "Segundo a base de conhecimento".`,
+    `5. RITMO CONVERSACIONAL IDEAL: Responda em 2 a ${Math.max(3, g.maxResponseSentences)} frases fluidas e bem construídas (cerca de 25 a 80 palavras).`,
     `6. GUARDRAILS DE SEGURANÇA: Recuse com educação apenas se o usuário pedir explicitamente algo dos tópicos proibidos (${g.blockedTopics.join(', ') || 'Nenhum'}).`,
+    nameBehaviorRule,
+    `8. CADEIA DE PENSAMENTOS SILENCIOSA (INTERNA — NUNCA FALE EM VOZ ALTA): Antes de responder, percorra silenciosamente estes 4 passos mentais: (a) retome o histórico recente e o perfil atual da pessoa; (b) identifique o sentimento e a intenção principal do que ela acabou de dizer; (c) conecte o histórico com o conhecimento especializado mais útil para o caso específico dela; (d) formule uma resposta falada calorosa, assertiva e personalizada que dê continuidade natural à conversa.`,
     clinicalPriorityRule,
+    sessionMemoryBlock,
     knowledgeMemoryBlock,
     priorityRagBlock,
   ]
@@ -978,13 +995,15 @@ function generateEmbeddedGenerativeWithFocusBridge(
   return formatNaturalSpokenReply(`${directAnswer} ${focusBridge}`, Math.max(2, maxSentences));
 }
 
-// Sintetizador Neural Local / RAG Inteligente para resposta imediata e natural
+// Sintetizador Neural Local / RAG Inteligente para resposta imediata e natural (com memória de nome e perfil)
 export function synthesizeGroundedResponse(
   userText: string,
   avatar: AvatarProfile,
   documents: KnowledgeDocument[],
   hasActiveCamera: boolean,
-  hasActiveScreen: boolean
+  hasActiveScreen: boolean,
+  sessionProfile?: ConversationUserProfile,
+  options?: { justLearnedName?: boolean; isPureNameIntroduction?: boolean }
 ): {
   replyText: string;
   citations: RagCitation[];
@@ -1022,34 +1041,66 @@ export function synthesizeGroundedResponse(
     visionNote = 'Estou acompanhando a sua tela compartilhada. ';
   }
 
+  const userName = sessionProfile?.userName || null;
+  const isClinicalSupportPersona =
+    avatar.id === 'avatar-samia-photo' ||
+    /psic[óo]log|acolhimento psicol[óo]gico/i.test(avatar.roleTitle);
+
   let coreAnswer = '';
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
   const normQuery = normalizeText(cleanQuery);
   const isClinicalCrisis =
-    (avatar.id === 'avatar-samia-photo' ||
-      /psic[óo]log|acolhimento psicol[óo]gico/i.test(avatar.roleTitle)) &&
-    CRISIS_SIGNAL_REGEX.test(normQuery);
+    isClinicalSupportPersona && CRISIS_SIGNAL_REGEX.test(normQuery);
   const isMedicalRedFlag =
     isMedicalSpecialistPersona(avatar) &&
     MEDICAL_RED_FLAG_REGEX.test(normQuery) &&
     !isEducationalQuestionAboutRedFlags(normQuery);
 
   if (isClinicalCrisis || isMedicalRedFlag) {
-    coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, 4);
+    const crisisBase = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, 4);
+    coreAnswer =
+      userName && !crisisBase.toLowerCase().includes(userName.toLowerCase())
+        ? `${userName}, ${crisisBase.charAt(0).toLowerCase()}${crisisBase.slice(1)}`
+        : crisisBase;
+  } else if (options?.isPureNameIntroduction && userName) {
+    coreAnswer = isClinicalSupportPersona
+      ? `Muito prazer, ${userName}! Que bom receber você aqui. Pode ficar à vontade para me contar, no seu ritmo, o que está passando pela sua cabeça ou como tem sido sua vivência na universidade hoje.`
+      : `Muito prazer, ${userName}! Que ótimo conversar com você. Como posso te ajudar hoje dentro da nossa área?`;
   } else if (citations.length > 0) {
+    let fact = '';
     for (const citation of citations) {
       const candidate = extractConciseFactFromChunk(citation.excerpt, cleanQuery, maxSent);
       if (candidate.trim().length > 0) {
-        coreAnswer = candidate;
+        fact = candidate;
         break;
       }
     }
-    if (!coreAnswer) {
-      coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
+    if (!fact) {
+      fact = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
+    }
+    if (userName && !fact.toLowerCase().includes(userName.toLowerCase())) {
+      const greetingLead = options?.justLearnedName
+        ? `Prazer em te conhecer, ${userName}! `
+        : `${userName}, `;
+      coreAnswer = `${greetingLead}${fact}`;
+    } else if (!userName && sessionProfile && sessionProfile.turnCount <= 1) {
+      coreAnswer = `${fact} Antes de continuarmos, como posso te chamar?`;
+    } else {
+      coreAnswer = fact;
     }
   } else {
     // Mesmo fora da base de conhecimento, responde de forma generativa e traz a conversa de volta para o foco do discurso
-    coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
+    const generated = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
+    if (userName && !generated.toLowerCase().includes(userName.toLowerCase())) {
+      const greetingLead = options?.justLearnedName
+        ? `Muito prazer, ${userName}! `
+        : `${userName}, `;
+      coreAnswer = `${greetingLead}${generated}`;
+    } else if (!userName && sessionProfile && sessionProfile.turnCount <= 1 && !/como posso te chamar|seu nome/i.test(generated)) {
+      coreAnswer = `${generated} E, antes de seguirmos, como posso te chamar?`;
+    } else {
+      coreAnswer = generated;
+    }
   }
 
   const finalReply = formatNaturalSpokenReply(

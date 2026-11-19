@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AvatarProfile,
   ConversationTurn,
+  ConversationUserProfile,
   EmotionState,
   GestureState,
   GuardrailAuditEvent,
@@ -19,6 +20,10 @@ import {
   evaluateRealtimeGuardrails,
   evaluateSemanticJudge,
 } from './services/ragAndGuardrails';
+import {
+  createEmptyUserProfile,
+  updateConversationProfile,
+} from './services/conversationMemory';
 import {
   GeminiLiveSessionManager,
   RealtimeAudioVisemeEngine,
@@ -56,8 +61,10 @@ type ScreenMode = 'live_stage' | 'admin_config';
 
 const STORAGE_KEY = 'aether_live_studio_state_v4';
 
-const PREVIOUS_SAMIA_DEFAULT_GREETING =
-  'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.';
+const PREVIOUS_SAMIA_DEFAULT_GREETINGS = new Set([
+  'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.',
+  'Olá, eu sou a Sâmia, vou lhe ajudar a fazer a ponte psicológica, clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pensando hoje.',
+]);
 
 function getPersonaQuickMeta(av: AvatarProfile): { shortName: string; specialty: string } {
   const role = av.roleTitle.toLowerCase();
@@ -101,7 +108,7 @@ export function App() {
             if (
               a.id === 'avatar-samia-photo' &&
               defaultSamia &&
-              a.greetingMessage === PREVIOUS_SAMIA_DEFAULT_GREETING
+              PREVIOUS_SAMIA_DEFAULT_GREETINGS.has(a.greetingMessage)
             ) {
               return { ...a, greetingMessage: defaultSamia.greetingMessage };
             }
@@ -262,6 +269,15 @@ export function App() {
       latencyMs: 140,
     },
   ]);
+
+  // Perfil Vivo da Pessoa + Cadeia de Pensamentos da Sessão Atual (nome, contexto acadêmico, sinais e continuidade)
+  const [sessionProfile, setSessionProfile] = useState<ConversationUserProfile>(() =>
+    createEmptyUserProfile(activeAvatar.greetingMessage || DEFAULT_AVATARS[0].greetingMessage)
+  );
+  const turnsRef = useRef<ConversationTurn[]>(turns);
+  turnsRef.current = turns;
+  const sessionProfileRef = useRef<ConversationUserProfile>(sessionProfile);
+  sessionProfileRef.current = sessionProfile;
 
   // Controle de fala inicial automática ao entrar no aplicativo (com desbloqueio instantâneo caso o navegador bloqueie autoplay)
   const [pendingAutoGreeting, setPendingAutoGreeting] = useState<boolean>(false);
@@ -526,18 +542,35 @@ export function App() {
 
     const visionSnapshot = captureVisionSnapshot();
 
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `turn-user-${Date.now()}`,
-        timestamp: nowStr,
-        speaker: 'user',
-        text: rawText,
-        guardrailEvent:
-          inputGuard.action !== 'passed' ? inputGuard.auditEvent : undefined,
-        hasVisionFrame: Boolean(visionSnapshot),
-      },
-    ]);
+    const currentTurnsSnapshot = turnsRef.current;
+    const currentProfileSnapshot = sessionProfileRef.current;
+
+    // Atualiza perfil vivo da pessoa, registra nome se informado e gera novo passo da cadeia de pensamentos
+    const {
+      profile: nextProfile,
+      justLearnedName,
+      isPureNameIntroduction,
+    } = updateConversationProfile(
+      currentProfileSnapshot,
+      inputGuard.sanitizedText,
+      currentTurnsSnapshot
+    );
+    sessionProfileRef.current = nextProfile;
+    setSessionProfile(nextProfile);
+
+    const newUserTurn: ConversationTurn = {
+      id: `turn-user-${Date.now()}`,
+      timestamp: nowStr,
+      speaker: 'user',
+      text: rawText,
+      guardrailEvent:
+        inputGuard.action !== 'passed' ? inputGuard.auditEvent : undefined,
+      hasVisionFrame: Boolean(visionSnapshot),
+    };
+
+    const turnsWithCurrentUser = [...currentTurnsSnapshot, newUserTurn];
+    turnsRef.current = turnsWithCurrentUser;
+    setTurns(turnsWithCurrentUser);
 
     if (inputGuard.action === 'blocked_cut_audio') {
       audio.interrupt();
@@ -556,6 +589,7 @@ export function App() {
         latencyMs: 18,
         modeUsed: 'sandbox_neural',
       };
+      turnsRef.current = [...turnsWithCurrentUser, blockedTurn];
       setTurns((prev) => [...prev, blockedTurn]);
       audio.speakWithVisemes(
         inputGuard.sanitizedText,
@@ -585,7 +619,10 @@ export function App() {
         visionFrameBase64: visionSnapshot,
         hasActiveCamera: cameraActive,
         hasActiveScreen: screenActive,
-        recentTurns: turns.slice(-8),
+        recentTurns: turnsWithCurrentUser.slice(-20),
+        sessionProfile: nextProfile,
+        justLearnedName,
+        isPureNameIntroduction,
       });
 
       if (activeAvatar.guardrails.enableSemanticJudge) {
@@ -630,6 +667,7 @@ export function App() {
           latencyMs: result.latencyMs,
           modeUsed: result.modeUsed,
         };
+        turnsRef.current = [...turnsRef.current, avatarTurn];
         setTurns((prev) => [...prev, avatarTurn]);
       };
 
@@ -841,25 +879,27 @@ export function App() {
     setActiveAvatarId(id);
     const chosen = avatars.find((a) => a.id === id);
     if (chosen) {
+      const freshProfile = createEmptyUserProfile(chosen.greetingMessage);
+      sessionProfileRef.current = freshProfile;
+      setSessionProfile(freshProfile);
       setEmotion('happy');
       setGesture('wave');
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: `turn-switch-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          }),
-          speaker: 'avatar',
-          text: chosen.greetingMessage,
-          emotion: 'happy',
-          gesture: 'wave',
-          modeUsed: 'sandbox_neural',
-          latencyMs: 95,
-        },
-      ]);
+      const switchTurn: ConversationTurn = {
+        id: `turn-switch-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+        speaker: 'avatar',
+        text: chosen.greetingMessage,
+        emotion: 'happy',
+        gesture: 'wave',
+        modeUsed: 'sandbox_neural',
+        latencyMs: 95,
+      };
+      turnsRef.current = [...turnsRef.current, switchTurn];
+      setTurns((prev) => [...prev, switchTurn]);
       audioEngineRef.current?.speakWithVisemes(
         chosen.greetingMessage,
         chosen.geminiConfig.voiceName,
@@ -907,7 +947,7 @@ export function App() {
         voiceName: nextVoice,
       },
       greetingMessage:
-        'Olá! Sou um novo perfil de avatar configurado pelo ambiente de administração.',
+        'Olá! Sou um novo perfil de avatar configurado pelo ambiente de administração. Como posso te chamar?',
     };
     setAvatars((prev) => [...prev, clone]);
     setActiveAvatarId(newId);
@@ -929,6 +969,9 @@ export function App() {
     setActiveAvatarId(DEFAULT_AVATARS[0].id);
     setDocuments(DEFAULT_DOCUMENTS.map(ensureDocumentChunks));
     setAuditEvents(INITIAL_AUDIT_EVENTS);
+    const freshProfile = createEmptyUserProfile(DEFAULT_AVATARS[0].greetingMessage);
+    sessionProfileRef.current = freshProfile;
+    setSessionProfile(freshProfile);
   };
 
   const renderActiveAvatarStage = () => {
@@ -1047,7 +1090,7 @@ export function App() {
             >
               <span className="caption-speaker">
                 {turns[turns.length - 1].speaker === 'user'
-                  ? 'Você: '
+                  ? `${sessionProfile.userName || 'Você'}: `
                   : `${activeAvatar.name}: `}
               </span>
               <span>{turns[turns.length - 1].text}</span>
@@ -1102,7 +1145,10 @@ export function App() {
                   gap: '8px',
                 }}
               >
-                <span>HISTÓRICO ({turns.length}) • TOQUE NO TRECHO PARA OUVIR</span>
+                <span>
+                  HISTÓRICO ({turns.length})
+                  {sessionProfile.userName ? ` • ${sessionProfile.userName.toUpperCase()}` : ''} • TOQUE NO TRECHO PARA OUVIR
+                </span>
                 <button
                   type="button"
                   onClick={() => setShowTranscript(false)}
@@ -1120,6 +1166,73 @@ export function App() {
                   <X size={15} />
                 </button>
               </div>
+              {(sessionProfile.userName ||
+                sessionProfile.academicStage ||
+                sessionProfile.courseOrArea ||
+                sessionProfile.campusOrUnit ||
+                sessionProfile.emotionalSignals.length > 0 ||
+                sessionProfile.thoughtChain.length > 0) && (
+                <div
+                  id="stage-session-profile-bar"
+                  style={{
+                    padding: '8px 14px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
+                    background: 'rgba(20, 184, 166, 0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    fontSize: '0.72rem',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                    <span style={{ color: '#2dd4bf', fontWeight: 700, fontSize: '0.67rem', letterSpacing: '0.04em' }}>
+                      PERFIL NA SESSÃO:
+                    </span>
+                    {sessionProfile.userName && (
+                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(0, 240, 255, 0.16)', color: '#7dd3fc', fontWeight: 600 }}>
+                        Nome: {sessionProfile.userName}
+                      </span>
+                    )}
+                    {sessionProfile.academicStage && (
+                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
+                        {sessionProfile.academicStage}
+                      </span>
+                    )}
+                    {sessionProfile.courseOrArea && (
+                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
+                        {sessionProfile.courseOrArea}
+                      </span>
+                    )}
+                    {sessionProfile.campusOrUnit && (
+                      <span style={{ padding: '1px 7px', borderRadius: '999px', background: 'rgba(255, 255, 255, 0.08)', color: '#e2e8f0' }}>
+                        {sessionProfile.campusOrUnit}
+                      </span>
+                    )}
+                    {sessionProfile.emotionalSignals.slice(-2).map((sig) => (
+                      <span
+                        key={sig}
+                        style={{
+                          padding: '1px 7px',
+                          borderRadius: '999px',
+                          background: 'rgba(244, 114, 182, 0.14)',
+                          color: '#fbcfe8',
+                        }}
+                      >
+                        {sig}
+                      </span>
+                    ))}
+                  </div>
+                  {sessionProfile.thoughtChain.length > 0 && (
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8', lineHeight: 1.35 }}>
+                      <strong style={{ color: '#5eead4' }}>
+                        Cadeia de Pensamento (#{sessionProfile.thoughtChain[sessionProfile.thoughtChain.length - 1].turnIndex}):
+                      </strong>{' '}
+                      {sessionProfile.thoughtChain[sessionProfile.thoughtChain.length - 1].responseStrategy}
+                    </div>
+                  )}
+                </div>
+              )}
               <div
                 style={{
                   padding: '12px 14px',
@@ -1191,7 +1304,9 @@ export function App() {
                         }}
                       >
                         <span>
-                          {turn.speaker === 'user' ? 'Você' : activeAvatar.name}{' '}
+                          {turn.speaker === 'user'
+                            ? sessionProfile.userName || 'Você'
+                            : activeAvatar.name}{' '}
                           <span style={{ opacity: 0.6, fontWeight: 400 }}>{turn.timestamp}</span>
                         </span>
                         <span

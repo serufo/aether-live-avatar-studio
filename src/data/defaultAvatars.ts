@@ -155,7 +155,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, eu sou a Sâmia, vou lhe ajudar a fazer a ponte psicológica, clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pensando hoje.',
+      'Olá, eu sou a Sâmia, vou lhe ajudar a fazer a ponte psicológica, clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pensando hoje. Como posso te chamar?',
     suggestedPrompts: [
       'Onde posso buscar acolhimento psicológico ou apoio em crise na UFMG?',
       'Estou me sentindo esgotado com prazos, provas e a pressão do meu orientador na pós.',
@@ -271,7 +271,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou o Dr. Rafael Mendonça, urologista. Este é um espaço tranquilo e sem tabus para tirar dúvidas educativas sobre saúde urinária, próstata, cálculos renais e prevenção.',
+      'Olá, sou o Dr. Rafael Mendonça, urologista. Este é um espaço tranquilo e sem tabus para tirar dúvidas educativas sobre saúde urinária, próstata, cálculos renais e prevenção. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'A partir de qual idade a SBU recomenda conversar sobre o rastreamento do câncer de próstata e o exame de PSA?',
       'Como prevenir novos cálculos renais no dia a dia e quais sinais na cólica exigem pronto-socorro?',
@@ -385,7 +385,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou a Dra. Beatriz Vasconcelos, médica geriatra. Estou aqui para conversar com calma sobre envelhecimento saudável, autonomia, prevenção de quedas, memória e cuidado com a pessoa idosa.',
+      'Olá, sou a Dra. Beatriz Vasconcelos, médica geriatra. Estou aqui para conversar com calma sobre envelhecimento saudável, autonomia, prevenção de quedas, memória e cuidado com a pessoa idosa. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'O que é a Avaliação Geriátrica Ampla (AGA) e por que ela vai além dos exames de sangue comuns?',
       'Como diferenciar um quadro súbito de delirium de uma demência que evolui lentamente?',
@@ -499,7 +499,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou o Dr. Eduardo Nogueira, nefrologista. Posso ajudar você a entender exames como creatinina, taxa de filtração glomerular e albuminúria, além de cuidados práticos para proteger a saúde dos seus rins.',
+      'Olá, sou o Dr. Eduardo Nogueira, nefrologista. Posso ajudar você a entender exames como creatinina, taxa de filtração glomerular e albuminúria, além de cuidados práticos para proteger a saúde dos seus rins. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'O que significam a creatinina, a taxa de filtração glomerular (TFG) e a albuminúria nos exames de rotina?',
       'Por que o uso frequente de anti-inflamatórios sem orientação pode prejudicar os rins?',
@@ -599,7 +599,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá! Sou a Aria Vance. Como posso ajudar você hoje?',
+      'Olá! Sou a Aria Vance, arquiteta-chefe de IA e Cloud. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'Qual é o SLA de disponibilidade e latência da arquitetura Aether Cloud?',
       'Explique como funciona o pipeline de sincronia labial e visemas em tempo real.',
@@ -698,7 +698,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou a Dra. Helena Monteiro. Como posso ajudar você hoje?',
+      'Olá, sou a Dra. Helena Monteiro, especialista em governança clínica e LGPD. Antes de entrarmos no tema, como posso te chamar?',
     suggestedPrompts: [
       'Como o Artigo 11 da LGPD regula o tratamento de dados sensíveis de saúde?',
       'Qual é o prazo de retenção e protocolo de anonimização de prontuários no hospital?',
@@ -796,7 +796,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá! Aqui é o Kael Takashi. Como posso ajudar na segurança da sua operação hoje?',
+      'Olá! Aqui é o Kael Takashi, especialista em cibersegurança e resposta a incidentes. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'Qual é o tempo máximo de contenção (MTTR) para incidentes Críticos P1 no nosso Playbook SOC?',
       'Como funciona a rotação mTLS e isolamento de pods no cluster Zero-Trust?',
@@ -893,7 +893,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, sou o NEXUS-9. Qual métrica ou análise você gostaria de revisar?',
+      'Olá, sou o NEXUS-9, núcleo de inteligência quantitativa e telemetria. Antes de começarmos, como posso te chamar?',
     suggestedPrompts: [
       'Qual é o limite de Value at Risk (VaR 99%) e liquidez exigido na política quantitativa 2026?',
       'Sintetize as diretrizes de latência e telemetria do ecossistema Aether Live.',
