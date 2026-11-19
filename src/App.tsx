@@ -55,6 +55,9 @@ type ScreenMode = 'live_stage' | 'admin_config';
 
 const STORAGE_KEY = 'aether_live_studio_state_v4';
 
+const PREVIOUS_SAMIA_DEFAULT_GREETING =
+  'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.';
+
 export function App() {
   // Estado Principal Persistente (com merge não destrutivo de novos avatares e documentos padrão)
   const [avatars, setAvatars] = useState<AvatarProfile[]>(() => {
@@ -63,7 +66,17 @@ export function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.avatars) && parsed.avatars.length > 0) {
-          const savedList = parsed.avatars as AvatarProfile[];
+          const defaultSamia = DEFAULT_AVATARS.find((d) => d.id === 'avatar-samia-photo');
+          const savedList = (parsed.avatars as AvatarProfile[]).map((a) => {
+            if (
+              a.id === 'avatar-samia-photo' &&
+              defaultSamia &&
+              a.greetingMessage === PREVIOUS_SAMIA_DEFAULT_GREETING
+            ) {
+              return { ...a, greetingMessage: defaultSamia.greetingMessage };
+            }
+            return a;
+          });
           const savedIds = new Set(savedList.map((a) => a.id));
           const missingDefaults = DEFAULT_AVATARS.filter((d) => !savedIds.has(d.id));
           return missingDefaults.length > 0
@@ -212,13 +225,17 @@ export function App() {
         second: '2-digit',
       }),
       speaker: 'avatar',
-      text: DEFAULT_AVATARS[0].greetingMessage,
+      text: activeAvatar.greetingMessage || DEFAULT_AVATARS[0].greetingMessage,
       emotion: 'happy',
       gesture: 'wave',
       modeUsed: 'sandbox_neural',
       latencyMs: 140,
     },
   ]);
+
+  // Controle de fala inicial automática ao entrar no aplicativo (com desbloqueio instantâneo caso o navegador bloqueie autoplay)
+  const [pendingAutoGreeting, setPendingAutoGreeting] = useState<boolean>(false);
+  const initialGreetingHandledRef = useRef<boolean>(false);
 
   // Streams Multimodais (Webcam & Screen Share)
   const [cameraActive, setCameraActive] = useState(false);
@@ -316,6 +333,88 @@ export function App() {
     };
   }, [geminiApiKey, activeAvatar.id]);
 
+  // Fala inicial automática ao entrar no aplicativo (força fala imediata; se o navegador bloquear autoplay, libera no primeiro toque/tecla)
+  const playInitialGreeting = useCallback(
+    (isUnlockRetry = false) => {
+      const audio = audioEngineRef.current;
+      if (!audio || isMuted) return;
+
+      const greetingText = activeAvatar.greetingMessage?.trim();
+      if (!greetingText) return;
+
+      if (geminiApiKey) {
+        audio.setApiKey(geminiApiKey);
+      }
+
+      if (isUnlockRetry) {
+        audio.initAudioContext();
+        setPendingAutoGreeting(false);
+        initialGreetingHandledRef.current = true;
+      }
+
+      audio.speakWithVisemes(
+        greetingText,
+        activeAvatar.geminiConfig.voiceName,
+        () => {
+          setEmotion('neutral');
+          setGesture('idle');
+        },
+        () => {
+          initialGreetingHandledRef.current = true;
+          setPendingAutoGreeting(false);
+          setEmotion('happy');
+          setGesture('wave');
+        },
+        isUnlockRetry
+          ? undefined
+          : () => {
+              if (!initialGreetingHandledRef.current) {
+                setPendingAutoGreeting(true);
+              }
+            }
+      );
+    },
+    [activeAvatar.greetingMessage, activeAvatar.geminiConfig.voiceName, geminiApiKey, isMuted]
+  );
+
+  // Dispara a fala inicial automaticamente logo que o usuário entra no aplicativo
+  useEffect(() => {
+    if (initialGreetingHandledRef.current || isMuted) return;
+    const timer = window.setTimeout(() => {
+      if (!initialGreetingHandledRef.current && !isMuted) {
+        playInitialGreeting(false);
+      }
+    }, 320);
+    return () => window.clearTimeout(timer);
+    // Executa na entrada do app (e quando a chave de API terminar de carregar se ainda não tiver falado)
+  }, [playInitialGreeting, isMuted]);
+
+  // Se o navegador bloqueou autoplay antes de interação, desbloqueia e fala no primeiro toque/clique/tecla em qualquer ponto da tela
+  useEffect(() => {
+    if (!pendingAutoGreeting || initialGreetingHandledRef.current || isMuted) return;
+
+    const unlockAndSpeak = (ev: Event) => {
+      const target = ev.target as HTMLElement | null;
+      if (target && target.closest('#btn-unlock-initial-greeting')) {
+        return;
+      }
+      // Se o usuário já clicou no campo de texto para digitar ou no botão de microfone/mudo, não interrompe a ação dele
+      if (target && target.closest('input, textarea, [data-skip-auto-greeting="true"]')) {
+        initialGreetingHandledRef.current = true;
+        setPendingAutoGreeting(false);
+        return;
+      }
+      playInitialGreeting(true);
+    };
+
+    window.addEventListener('pointerdown', unlockAndSpeak, { once: true, capture: true });
+    window.addEventListener('keydown', unlockAndSpeak, { once: true, capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockAndSpeak, true);
+      window.removeEventListener('keydown', unlockAndSpeak, true);
+    };
+  }, [pendingAutoGreeting, isMuted, playInitialGreeting]);
+
   // Telemetria de Visemas a cada 120ms
   useEffect(() => {
     const timer = setInterval(() => {
@@ -376,6 +475,9 @@ export function App() {
     const rawText = (overrideText ?? inputText).trim();
     if (!rawText || isProcessing) return;
     if (!overrideText) setInputText('');
+
+    initialGreetingHandledRef.current = true;
+    setPendingAutoGreeting(false);
 
     const audio = audioEngineRef.current;
     const manager = geminiManagerRef.current;
@@ -598,6 +700,8 @@ export function App() {
   };
 
   const toggleMicrophone = () => {
+    initialGreetingHandledRef.current = true;
+    setPendingAutoGreeting(false);
     if (isListeningMic || liveVoiceModeRef.current) {
       liveVoiceModeRef.current = false;
       try {
@@ -700,6 +804,8 @@ export function App() {
   };
 
   const handleSelectAvatar = (id: string) => {
+    initialGreetingHandledRef.current = true;
+    setPendingAutoGreeting(false);
     audioEngineRef.current?.interrupt();
     setReplayingTurnId(null);
     setActiveAvatarId(id);
@@ -847,6 +953,38 @@ export function App() {
         {/* Avatar em Tela Cheia 100dvh */}
         <main className="clean-stage-viewport" aria-label="Palco do Avatar Interativo">
           {renderActiveAvatarStage()}
+
+          {/* Aviso discreto exibido SOMENTE se o navegador bloqueou autoplay antes do primeiro toque */}
+          {pendingAutoGreeting && !isMuted && (
+            <button
+              type="button"
+              id="btn-unlock-initial-greeting"
+              onClick={() => playInitialGreeting(true)}
+              style={{
+                position: 'absolute',
+                top: '18px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 25,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 16px',
+                borderRadius: '999px',
+                border: '1px solid rgba(20, 184, 166, 0.55)',
+                background: 'rgba(10, 15, 28, 0.86)',
+                backdropFilter: 'blur(16px)',
+                color: '#f8fafc',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+              }}
+            >
+              <Volume2 size={16} color="#14b8a6" />
+              <span>Toque na tela para ouvir a {activeAvatar.name}</span>
+            </button>
+          )}
 
           {/* PiP Discreto de Câmera/Tela somente quando o usuário ativar */}
           {(cameraActive || screenActive) && (

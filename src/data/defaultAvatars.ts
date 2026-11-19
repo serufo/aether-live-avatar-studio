@@ -131,7 +131,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       enableFunctionCallingRAG: true,
     },
     greetingMessage:
-      'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.',
+      'Olá, eu sou a Sâmia, vou lhe ajudar a fazer a ponte psicológica, clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pensando hoje.',
     suggestedPrompts: [
       'Onde posso buscar acolhimento psicológico ou apoio em crise na UFMG?',
       'Estou me sentindo esgotado com prazos, provas e a pressão do meu orientador na pós.',

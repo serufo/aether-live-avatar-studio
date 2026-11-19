@@ -429,7 +429,8 @@ export class RealtimeAudioVisemeEngine {
     text: string,
     voiceName: VoicePersonaName | string,
     onComplete?: () => void,
-    onAudioStart?: () => void
+    onAudioStart?: () => void,
+    onAutoplayBlocked?: () => void
   ) {
     this.interrupt();
 
@@ -470,6 +471,22 @@ export class RealtimeAudioVisemeEngine {
       if (abortCtrl.signal.aborted) return;
 
       if (pcmBase64) {
+        // Verifica se o navegador liberou o AudioContext para autoplay (o PCM já fica em cache para tocar em 0ms ao desbloquear)
+        if (onAutoplayBlocked) {
+          const ctx = this.initAudioContext();
+          if (ctx.state === 'suspended') {
+            await Promise.race([
+              ctx.resume().catch(() => {}),
+              new Promise((r) => setTimeout(r, 150)),
+            ]);
+          }
+          if (abortCtrl.signal.aborted) return;
+          if (ctx.state !== 'running') {
+            this.isSpeaking = false;
+            onAutoplayBlocked();
+            return;
+          }
+        }
         this.enqueuePcm24kBase64(pcmBase64, onComplete, onAudioStart);
         return;
       }
@@ -478,9 +495,19 @@ export class RealtimeAudioVisemeEngine {
     // 2. Fallback: Síntese Neural do Dispositivo estritamente em pt-BR (só ativa isSpeaking quando utter.onstart dispara!)
     let completed = false;
     let started = false;
+    let autoplayWatchdog: ReturnType<typeof setTimeout> | null = null;
+
+    const clearWatchdog = () => {
+      if (autoplayWatchdog) {
+        clearTimeout(autoplayWatchdog);
+        autoplayWatchdog = null;
+      }
+    };
+
     const markStarted = () => {
       if (started) return;
       started = true;
+      clearWatchdog();
       this.speechStartTime = performance.now();
       this.isSpeaking = true;
       onAudioStart?.();
@@ -489,6 +516,7 @@ export class RealtimeAudioVisemeEngine {
     const finishSpeech = () => {
       if (completed) return;
       completed = true;
+      clearWatchdog();
       this.isSpeaking = false;
       this.boundaryCharIndex = -1;
       if (this.fallbackTimer) {
@@ -496,6 +524,25 @@ export class RealtimeAudioVisemeEngine {
         this.fallbackTimer = null;
       }
       onComplete?.();
+    };
+
+    const triggerAutoplayBlocked = () => {
+      if (completed || started) return;
+      completed = true;
+      clearWatchdog();
+      this.isSpeaking = false;
+      if (this.fallbackTimer) {
+        clearTimeout(this.fallbackTimer);
+        this.fallbackTimer = null;
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          // Ignore
+        }
+      }
+      onAutoplayBlocked?.();
     };
 
     if (typeof window !== 'undefined' && 'speechSynthesis' in window && !this.muted) {
@@ -512,6 +559,14 @@ export class RealtimeAudioVisemeEngine {
 
         const chunksToSpeak = sentences.length > 0 ? sentences : [cleanText];
         let charOffset = 0;
+
+        if (onAutoplayBlocked) {
+          autoplayWatchdog = setTimeout(() => {
+            if (!started && !completed) {
+              triggerAutoplayBlocked();
+            }
+          }, 950);
+        }
 
         chunksToSpeak.forEach((sentence, idx) => {
           const utter = new SpeechSynthesisUtterance(sentence);
@@ -538,15 +593,33 @@ export class RealtimeAudioVisemeEngine {
             }
           };
 
+          if (idx === 0) {
+            utter.onerror = (ev) => {
+              if (onAutoplayBlocked && !started && (ev.error === 'not-allowed' || ev.error === 'interrupted')) {
+                triggerAutoplayBlocked();
+                return;
+              }
+              if (idx === chunksToSpeak.length - 1) {
+                finishSpeech();
+              }
+            };
+          }
+
           if (idx === chunksToSpeak.length - 1) {
             utter.onend = () => finishSpeech();
-            utter.onerror = () => finishSpeech();
+            if (idx > 0) {
+              utter.onerror = () => finishSpeech();
+            }
           }
 
           window.speechSynthesis.speak(utter);
         });
       } catch {
-        markStarted();
+        if (onAutoplayBlocked) {
+          triggerAutoplayBlocked();
+        } else {
+          markStarted();
+        }
       }
     } else {
       const selected = this.selectVoiceForPersona(persona);
