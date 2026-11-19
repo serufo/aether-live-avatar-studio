@@ -33,6 +33,8 @@ import { AvatarEngine2D } from './components/stage/AvatarEngine2D';
 import { AvatarEnginePhotorealistic } from './components/stage/AvatarEnginePhotorealistic';
 import { AvatarEngineOrb } from './components/stage/AvatarEngineOrb';
 import { AdminStudioPanel } from './components/admin/AdminStudioPanel';
+import { AetherSplashScreen } from './components/splash/AetherSplashScreen';
+import { APP_DEV_VERSION_LABEL } from './config/version';
 import {
   Mic,
   MicOff,
@@ -224,7 +226,8 @@ export function App() {
   const activeAvatar =
     avatars.find((a) => a.id === activeAvatarId) || avatars[0];
 
-  // Separação clara entre Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
+  // Separação clara entre Tela de Splash, Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
+  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [screenMode, setScreenMode] = useState<ScreenMode>('live_stage');
   const [showTranscript, setShowTranscript] = useState<boolean>(false);
   const [showDockOptions, setShowDockOptions] = useState<boolean>(false);
@@ -433,17 +436,28 @@ export function App() {
     [activeAvatar.greetingMessage, activeAvatar.geminiConfig.voiceName, geminiApiKey, isMuted]
   );
 
-  // Dispara a fala inicial automaticamente logo que o usuário entra no aplicativo
+  // Dispara a fala inicial automaticamente logo que o usuário entra no aplicativo (aguardando saída da tela de splash)
   useEffect(() => {
-    if (initialGreetingHandledRef.current || isMuted) return;
+    if (showSplash || initialGreetingHandledRef.current || isMuted) return;
     const timer = window.setTimeout(() => {
       if (!initialGreetingHandledRef.current && !isMuted) {
         playInitialGreeting(false);
       }
     }, 320);
     return () => window.clearTimeout(timer);
-    // Executa na entrada do app (e quando a chave de API terminar de carregar se ainda não tiver falado)
-  }, [playInitialGreeting, isMuted]);
+    // Executa na entrada do palco (e quando a chave de API terminar de carregar se ainda não tiver falado)
+  }, [showSplash, playInitialGreeting, isMuted]);
+
+  const handleBeginEnterFromSplash = useCallback(() => {
+    audioEngineRef.current?.initAudioContext();
+    if (!initialGreetingHandledRef.current && !isMuted) {
+      playInitialGreeting(true);
+    }
+  }, [isMuted, playInitialGreeting]);
+
+  const handleFinishEnterFromSplash = useCallback(() => {
+    setShowSplash(false);
+  }, []);
 
   // Se o navegador bloqueou autoplay antes de interação, desbloqueia e fala no primeiro toque/clique/tecla em qualquer ponto da tela
   useEffect(() => {
@@ -1047,6 +1061,13 @@ export function App() {
   if (screenMode === 'live_stage') {
     return (
       <div className="clean-stage-shell">
+        {showSplash && (
+          <AetherSplashScreen
+            onBeginEnter={handleBeginEnterFromSplash}
+            onEnter={handleFinishEnterFromSplash}
+            versionLabel={APP_DEV_VERSION_LABEL}
+          />
+        )}
         <h1 className="sr-only">{activeAvatar.name} — Palco Interativo em Tempo Real</h1>
 
         {/* Avatar em Tela Cheia 100dvh */}
@@ -1605,7 +1626,21 @@ export function App() {
         <div className="brand-cluster">
           <div className="brand-orb-indicator" />
           <div>
-            <h1 className="brand-title">AMBIENTE DE ADMINISTRAÇÃO // AETHER STUDIO</h1>
+            <h1 className="brand-title">
+              AMBIENTE DE ADMINISTRAÇÃO // AETHER STUDIO
+              <button
+                type="button"
+                id="btn-admin-dev-version"
+                className="admin-dev-version-chip"
+                onClick={() => {
+                  setScreenMode('live_stage');
+                  setShowSplash(true);
+                }}
+                title="Versão de desenvolvimento atual — clique para rever a tela de splash"
+              >
+                {APP_DEV_VERSION_LABEL}
+              </button>
+            </h1>
             <span className="brand-subtitle">
               CONFIGURAÇÃO DE PERFIS • 4 MOTORES VISUAIS • RAG • GUARDRAILS & GEMINI LIVE
             </span>
