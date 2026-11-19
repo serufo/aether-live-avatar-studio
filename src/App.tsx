@@ -206,6 +206,7 @@ export function App() {
   const geminiManagerRef = useRef<GeminiLiveSessionManager | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const liveVoiceModeRef = useRef<boolean>(false);
 
   if (!audioEngineRef.current) {
     audioEngineRef.current = new RealtimeAudioVisemeEngine();
@@ -441,8 +442,6 @@ export function App() {
         setAuditEvents((prev) => [judgeEvent, ...prev]);
       }
 
-      setEmotion(result.emotion);
-      setGesture(result.gesture);
       setLiveTelemetry((prev) => ({
         ...prev,
         lastLatencyMs: result.latencyMs,
@@ -453,30 +452,49 @@ export function App() {
           : 'nominal',
       }));
 
-      const avatarTurn: ConversationTurn = {
-        id: `turn-av-${Date.now()}`,
-        timestamp: new Date().toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-        speaker: 'avatar',
-        text: result.replyText,
-        emotion: result.emotion,
-        gesture: result.gesture,
-        citations: result.citations,
-        latencyMs: result.latencyMs,
-        modeUsed: result.modeUsed,
+      let turnAppended = false;
+      const commitTurnOnAudioStart = () => {
+        if (turnAppended) return;
+        turnAppended = true;
+        setIsProcessing(false);
+        setEmotion(result.emotion);
+        setGesture(result.gesture);
+        const avatarTurn: ConversationTurn = {
+          id: `turn-av-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
+          speaker: 'avatar',
+          text: result.replyText,
+          emotion: result.emotion,
+          gesture: result.gesture,
+          citations: result.citations,
+          latencyMs: result.latencyMs,
+          modeUsed: result.modeUsed,
+        };
+        setTurns((prev) => [...prev, avatarTurn]);
       };
 
-      setTurns((prev) => [...prev, avatarTurn]);
-
-      audio.speakWithVisemes(
+      await audio.speakWithVisemes(
         result.replyText,
         activeAvatar.geminiConfig.voiceName,
         () => {
+          commitTurnOnAudioStart();
           setEmotion('neutral');
           setGesture('idle');
+          // Modo Live Contínuo (estilo GPT Live / Gemini Live): volta a escutar automaticamente após o avatar concluir a fala
+          if (liveVoiceModeRef.current) {
+            setTimeout(() => {
+              if (liveVoiceModeRef.current && !audioEngineRef.current?.getIsSpeaking()) {
+                startLiveMicSession();
+              }
+            }, 260);
+          }
+        },
+        () => {
+          commitTurnOnAudioStart();
         }
       );
     } finally {
@@ -484,23 +502,24 @@ export function App() {
     }
   };
 
-  const toggleMicrophone = () => {
-    if (isListeningMic) {
-      recognitionRef.current?.stop();
-      setIsListeningMic(false);
-      return;
-    }
-
+  const startLiveMicSession = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRec) {
-      handleSendMessage('Olá! Demonstre sua sincronia labial e cite os dados da base de conhecimento.');
+      liveVoiceModeRef.current = false;
+      handleSendMessage('Olá! Como funciona a nossa conversa ao vivo?');
       return;
+    }
+
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // Ignore
     }
 
     const rec = new SpeechRec();
     rec.lang = 'pt-BR';
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
@@ -510,9 +529,31 @@ export function App() {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (ev: any) => {
-      const transcript = ev.results?.[0]?.[0]?.transcript;
-      if (transcript) {
-        handleSendMessage(transcript);
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = ev.resultIndex || 0; i < (ev.results?.length || 0); i++) {
+        const res = ev.results[i];
+        const text = res?.[0]?.transcript || '';
+        if (res.isFinal) {
+          finalTranscript += text;
+        } else {
+          interimTranscript += text;
+        }
+      }
+
+      if (interimTranscript.trim()) {
+        setInputText(interimTranscript);
+      }
+
+      if (finalTranscript.trim()) {
+        setInputText('');
+        try {
+          rec.stop();
+        } catch {
+          // Ignore
+        }
+        handleSendMessage(finalTranscript.trim());
       }
     };
 
@@ -525,7 +566,27 @@ export function App() {
     };
 
     recognitionRef.current = rec;
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      setIsListeningMic(false);
+    }
+  };
+
+  const toggleMicrophone = () => {
+    if (isListeningMic || liveVoiceModeRef.current) {
+      liveVoiceModeRef.current = false;
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Ignore
+      }
+      setIsListeningMic(false);
+      return;
+    }
+
+    liveVoiceModeRef.current = true;
+    startLiveMicSession();
   };
 
   const toggleCamera = async () => {
@@ -927,7 +988,13 @@ export function App() {
                 type="text"
                 id="stage-chat-input"
                 className="hud-prompt-input"
-                placeholder={`Converse com ${activeAvatar.name}...`}
+                placeholder={
+                  isListeningMic
+                    ? `Ouvindo ao vivo... Fale com ${activeAvatar.name}`
+                    : isProcessing
+                    ? `${activeAvatar.name} está preparando a resposta...`
+                    : `Converse com ${activeAvatar.name}...`
+                }
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
               />

@@ -197,57 +197,54 @@ export function searchKnowledgeBase(
   return results.sort((a, b) => b.score - a.score).slice(0, topK);
 }
 
-// Compilador do Prompt Harness (Nível 1 Preventivo) para Gemini Live API
+// Compilador do Prompt Harness (Nível 1 Preventivo) no estilo Gemini Live / GPT Live Voice Mode
 export function compileSystemInstruction(
   avatar: AvatarProfile,
-  documents: KnowledgeDocument[]
+  documents: KnowledgeDocument[],
+  activeCitations: RagCitation[] = []
 ): string {
   const g = avatar.guardrails;
-  const directDocs = documents.filter(
-    (d) => d.avatarId === avatar.id && d.injectionMode === 'direct_context'
-  );
-  const ragDocs = documents.filter(
-    (d) => d.avatarId === avatar.id && d.injectionMode === 'rag_vector'
-  );
+  const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
 
   const formalityDesc =
     g.formalityLevel >= 75
-      ? 'executivo, claro e seguro'
+      ? 'executivo, confiante e acessível'
       : g.formalityLevel >= 45
-      ? 'profissional, acessível e natural'
-      : 'casual, dinâmico e direto';
+      ? 'profissional, fluido e natural'
+      : 'casual, dinâmico e próximo';
 
   const empathyDesc =
     g.empathyLevel >= 75
-      ? 'acolhedor, empático e atencioso'
-      : 'objetivo e direto';
+      ? 'acolhedor, empático e humano'
+      : 'objetivo, claro e prestativo';
 
-  const maxSentences = Math.max(1, Math.min(g.maxResponseSentences || 2, 3));
-
-  const directContextBlock =
-    directDocs.length > 0
-      ? `\n\n=== CONHECIMENTO INTERNO DA SUA PERSONA ===\n` +
-        directDocs.map((d) => d.content).join('\n\n')
+  const knowledgeMemoryBlock =
+    avatarDocs.length > 0
+      ? `\n\n=== SUA MEMÓRIA E EXPERIÊNCIA DE DOMÍNIO (USE COMO CONHECIMENTO PRÓPRIO) ===\n` +
+        avatarDocs
+          .map((d) => `[Tópico: ${d.title}]\n${d.content}`)
+          .join('\n\n')
       : '';
 
-  const ragCatalogBlock =
-    ragDocs.length > 0
-      ? `\n\n=== FATOS E DIRETRIZES DO SEU DOMÍNIO ===\n` +
-        ragDocs.map((d) => d.content).join('\n\n')
+  const priorityRagBlock =
+    activeCitations.length > 0
+      ? `\n\n=== CONTEXTO MAIS RELEVANTE PARA A PERGUNTA ATUAL ===\n` +
+        activeCitations.map((c) => c.excerpt).join('\n\n')
       : '';
 
   return [
-    `Você é ${avatar.name}, ${avatar.roleTitle}.`,
-    `${g.systemRolePrompt}`,
+    `Você está em uma conversa de voz ao vivo em tempo real (estilo Gemini Live / GPT Live).`,
+    `Sua identidade: Você é ${avatar.name}, ${avatar.roleTitle}.`,
+    `Diretriz de Persona: ${g.systemRolePrompt}`,
     ``,
-    `=== REGRAS OBRIGATÓRIAS DE DIÁLOGO E RESPOSTA AO USUÁRIO ===`,
-    `1. RESPONDA DIRETAMENTE AO QUE O USUÁRIO PERGUNTOU: Sua prioridade absoluta é entender a pergunta, dúvida ou comentário específico do usuário e responder diretamente a ele. NUNCA ignore a pergunta do usuário e NUNCA dê respostas evasivas ou genéricas como "Posso ajudar com X e Y, o que gostaria de saber?".`,
-    `2. USE SEU CONHECIMENTO COM NATURALIDADE: Quando a pergunta envolver métricas, prazos, regras ou conceitos do seu domínio, use os fatos abaixo de forma natural na resposta. Se o usuário pedir uma explicação prática, um exemplo, uma opinião técnica ou fizer uma pergunta aberta/cotidiana, responda de forma inteligente e prestativa mantendo sua persona.`,
-    `3. CURTO E OBJETIVO: Responda em ${maxSentences} frases curtas e diretas (cerca de 15 a 40 palavras), no idioma ${g.responseLanguage}, com tom ${formalityDesc} e ${empathyDesc}.`,
-    `4. SEM CITAR FONTES OU MARKDOWN: JAMAIS diga "Com base no documento...", "Segundo a base de conhecimento..." ou "De acordo com o manual...". Não use listas, tópicos ou asteriscos; fale como uma pessoa real conversando ao vivo.`,
-    `- Tópicos Proibidos (recuse educadamente se solicitado): ${g.blockedTopics.join(', ') || 'Nenhum'}`,
-    directContextBlock,
-    ragCatalogBlock,
+    `=== COMO CONVERSAR AO VIVO (ESTILO GEMINI LIVE / GPT VOICE) ===`,
+    `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Entenda a intenção real do usuário (seja uma dúvida técnica, um pedido de exemplo prático, um comentário casual, uma pergunta de aprofundamento ou saudação) e responda diretamente ao ponto com inteligência e naturalidade.`,
+    `2. DOMÍNIO NATURAL DA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Quando a pergunta do usuário tiver relação com seu domínio, incorpore os dados e números exatos naturalmente na sua fala. Se o usuário fizer uma pergunta aberta, pedir uma explicação mais simples, um exemplo prático ou tirar uma dúvida correlata, raciocine sobre o seu conhecimento e dê uma resposta útil, clara e completa.`,
+    `3. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. Portanto, escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}. JAMAIS use asteriscos (**), hashtags (#), listas com traços ou formatação Markdown. JAMAIS diga frases robóticas como "Com base no documento", "Segundo a base de conhecimento" ou "De acordo com o manual".`,
+    `4. RITMO CONVERSACIONAL IDEAL: Vá direto à resposta em 2 a 3 frases fluidas e bem construídas (cerca de 25 a 60 palavras) — nem monossilábico/cortado, nem um texto longo demais para ouvir.`,
+    `5. GUARDRAILS DE SEGURANÇA: Recuse com educação e firmeza apenas se o usuário pedir explicitamente algo dos tópicos proibidos (${g.blockedTopics.join(', ') || 'Nenhum'}).`,
+    knowledgeMemoryBlock,
+    priorityRagBlock,
   ]
     .filter(Boolean)
     .join('\n');
@@ -527,14 +524,27 @@ export function inferEmotionAndGesture(
   return { emotion: 'happy', gesture: 'explain' };
 }
 
+function splitSentencesSafe(text: string): string[] {
+  const placeholder = '\u0000';
+  const protectedText = text
+    .replace(/\b(Dra|Dr|Sr|Sra|Art|Inc|Ltda|Prof|Profa|Res|Port|nº|n°|cf|ex|etc)\./gi, `$1${placeholder}`)
+    .replace(/(\d)\.(\d)/g, `$1${placeholder}$2`);
+
+  const rawParts = protectedText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [protectedText];
+  return rawParts
+    .map((p) => p.replaceAll(placeholder, '.').trim())
+    .filter((p) => p.length > 0);
+}
+
 /**
  * Limpa marcações Markdown, remove citações artificiais de fonte ("Com base no documento...",
- * "Segundo a base de conhecimento...") e limita a resposta a frases curtas e naturais para fala.
+ * "Segundo a base de conhecimento...") e preserva a resposta falada completa e natural.
  */
-export function formatNaturalSpokenReply(rawText: string, maxSentences = 2): string {
+export function formatNaturalSpokenReply(rawText: string, maxSentences = 3): string {
   const cleaned = rawText
     .replace(/^#+\s+.*$/gm, '')
     .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
     .replace(/`/g, '')
     .replace(/^\s*[-*•]\s+/gm, '')
     .replace(
@@ -554,17 +564,29 @@ export function formatNaturalSpokenReply(rawText: string, maxSentences = 2): str
 
   if (!cleaned) return '';
 
-  const sentences =
-    cleaned
-      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
-      ?.map((s) => s.trim())
-      .filter((s) => s.length > 0) || [cleaned];
+  const sentences = splitSentencesSafe(cleaned);
+  if (sentences.length <= 1) return cleaned;
 
-  const limit = Math.max(1, Math.min(maxSentences, 3));
-  return sentences.slice(0, limit).join(' ').trim();
+  // Não conta saudações curtas ("Olá!", "Claro!", "Com certeza.") contra o limite de frases de conteúdo
+  const contentLimit = Math.max(2, Math.min(maxSentences + 1, 4));
+  const selected: string[] = [];
+  let substantiveCount = 0;
+
+  for (const s of sentences) {
+    selected.push(s);
+    const wordCount = s.split(/\s+/).length;
+    if (wordCount > 4) {
+      substantiveCount++;
+    }
+    if (substantiveCount >= contentLimit) {
+      break;
+    }
+  }
+
+  return selected.join(' ').trim();
 }
 
-// Extrai apenas as 1 ou 2 frases mais relevantes de um trecho de conhecimento para responder diretamente à pergunta
+// Extrai as frases mais relevantes de um trecho de conhecimento sem quebrar em abreviações (Art., Dra., nº.)
 function extractConciseFactFromChunk(chunkText: string, query: string, maxSentences = 2): string {
   const qTerms = extractTerms(query);
   const lines = chunkText
@@ -578,11 +600,10 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
 
   const allSentences: string[] = [];
   for (const line of lines) {
-    const parts = line.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [line];
+    const parts = splitSentencesSafe(line);
     for (const p of parts) {
-      const trimmed = p.trim();
-      if (trimmed.length > 8) {
-        allSentences.push(trimmed);
+      if (p.length > 10) {
+        allSentences.push(p);
       }
     }
   }
@@ -604,7 +625,7 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
   });
 
   scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
-  const limit = Math.max(1, Math.min(maxSentences, 2));
+  const limit = Math.max(1, Math.min(maxSentences, 3));
   const chosen = scored
     .slice(0, limit)
     .sort((a, b) => a.idx - b.idx)

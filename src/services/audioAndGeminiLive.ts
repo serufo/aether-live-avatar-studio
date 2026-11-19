@@ -10,6 +10,7 @@ import {
   compileSystemInstruction,
   evaluateRealtimeGuardrails,
   formatNaturalSpokenReply,
+  inferEmotionAndGesture,
   searchKnowledgeBase,
   synthesizeGroundedResponse,
 } from './ragAndGuardrails';
@@ -73,6 +74,7 @@ export class RealtimeAudioVisemeEngine {
   private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
   private freqData: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
+  private timeData: Uint8Array<ArrayBuffer> = new Uint8Array(new ArrayBuffer(256));
   private isSpeaking = false;
   private hasActivePcmStream = false;
   private currentPhonemeText = '';
@@ -137,12 +139,13 @@ export class RealtimeAudioVisemeEngine {
       this.audioCtx = new Ctx();
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 512;
-      this.analyser.smoothingTimeConstant = 0.65;
+      this.analyser.smoothingTimeConstant = 0.52;
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.value = this.muted ? 0 : 0.98;
       this.analyser.connect(this.gainNode);
       this.gainNode.connect(this.audioCtx.destination);
       this.freqData = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
+      this.timeData = new Uint8Array(new ArrayBuffer(this.analyser.frequencyBinCount));
     }
     if (this.audioCtx.state === 'suspended') {
       this.audioCtx.resume().catch(() => {});
@@ -239,7 +242,6 @@ export class RealtimeAudioVisemeEngine {
       } else if (maleVoices.length > 0) {
         chosenVoice = maleVoices[0];
       } else if (sortedPool.length > 1) {
-        // Garante voz diferente da primeira quando o SO tem múltiplas vozes sem gênero explícito no nome
         const altIndex = Math.min(
           sortedPool.length - 1,
           1 + (spec.variantIndex % Math.max(1, sortedPool.length - 1))
@@ -262,28 +264,42 @@ export class RealtimeAudioVisemeEngine {
     };
   }
 
-  // Enfileira áudio PCM 24kHz 16-bit Little Endian vindo da Gemini Live API (Vozes Aoede, Kore, Puck, Charon, Fenrir)
-  public enqueuePcm24kBase64(base64Pcm: string, onEndedCallback?: () => void) {
+  // Enfileira áudio PCM 24kHz 16-bit Little Endian vindo da Gemini Live / TTS API (Vozes Aoede, Kore, Puck, Charon, Fenrir)
+  public enqueuePcm24kBase64(
+    base64Pcm: string,
+    onEndedCallback?: () => void,
+    onStartCallback?: () => void
+  ) {
     const ctx = this.initAudioContext();
     if (!this.analyser) return;
 
     const binaryStr = atob(base64Pcm);
     const len = binaryStr.length;
-    const int16 = new Int16Array(len / 2);
+    const sampleCount = Math.floor(len / 2);
     const view = new DataView(new ArrayBuffer(len));
     for (let i = 0; i < len; i++) {
       view.setUint8(i, binaryStr.charCodeAt(i));
     }
-    for (let i = 0; i < int16.length; i++) {
-      int16[i] = view.getInt16(i * 2, true);
+
+    const rawFloat32 = new Float32Array(sampleCount);
+    let firstActiveSample = 0;
+    let foundOnset = false;
+    for (let i = 0; i < sampleCount; i++) {
+      const sample = view.getInt16(i * 2, true) / 32768;
+      rawFloat32[i] = sample;
+      // Remove silêncio inicial do buffer para que a voz e a boca comecem exatamente no mesmo milissegundo
+      if (!foundOnset && Math.abs(sample) > 0.012) {
+        foundOnset = true;
+        firstActiveSample = Math.max(0, i - 240); // margem de 10ms para preservar o ataque da 1ª consoante
+      }
     }
 
-    const float32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768;
-    }
+    const float32 =
+      foundOnset && firstActiveSample > 0
+        ? rawFloat32.subarray(firstActiveSample)
+        : rawFloat32;
 
-    const buffer = ctx.createBuffer(1, float32.length, 24000);
+    const buffer = ctx.createBuffer(1, Math.max(1, float32.length), 24000);
     buffer.getChannelData(0).set(float32);
 
     const source = ctx.createBufferSource();
@@ -291,11 +307,17 @@ export class RealtimeAudioVisemeEngine {
     source.connect(this.analyser);
 
     const now = ctx.currentTime;
+    const isFirstChunk = this.activeSources.length === 0;
     const startAt = Math.max(now, this.nextPlaybackTime);
     source.start(startAt);
     this.nextPlaybackTime = startAt + buffer.duration;
-    this.isSpeaking = true;
+
     this.hasActivePcmStream = true;
+    this.isSpeaking = true;
+    if (isFirstChunk) {
+      this.speechStartTime = performance.now();
+      onStartCallback?.();
+    }
 
     this.activeSources.push(source);
     source.onended = () => {
@@ -308,7 +330,7 @@ export class RealtimeAudioVisemeEngine {
     };
   }
 
-  // Tenta sintetizar áudio neural direto pela API do Gemini (24kHz PCM com a voz exata: Aoede, Kore, Puck, Charon, Fenrir)
+  // Sintetiza áudio neural 24kHz PCM direto pela API de TTS do Gemini usando EXCLUSIVAMENTE o texto da resposta
   private async trySynthesizeGeminiNativeAudio(
     cleanText: string,
     persona: VoicePersonaName,
@@ -316,21 +338,12 @@ export class RealtimeAudioVisemeEngine {
   ): Promise<string | null> {
     if (!this.apiKey) return null;
 
-    const endpoints = [
-      {
-        model: 'gemini-2.5-flash-preview-tts',
-        prompt: `Leia exatamente este texto em português do Brasil com naturalidade: ${cleanText}`,
-      },
-      {
-        model: 'gemini-2.0-flash-exp',
-        prompt: `Repita exatamente o seguinte texto em português do Brasil, sem adicionar nenhuma palavra antes ou depois: "${cleanText}"`,
-      },
-    ];
+    const ttsModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
 
-    for (const ep of endpoints) {
+    for (const model of ttsModels) {
       try {
         const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${ep.model}:generateContent?key=${encodeURIComponent(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
             this.apiKey
           )}`,
           {
@@ -338,7 +351,7 @@ export class RealtimeAudioVisemeEngine {
             headers: { 'Content-Type': 'application/json' },
             signal,
             body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: ep.prompt }] }],
+              contents: [{ parts: [{ text: cleanText }] }],
               generationConfig: {
                 responseModalities: ['AUDIO'],
                 speechConfig: {
@@ -370,16 +383,18 @@ export class RealtimeAudioVisemeEngine {
     return null;
   }
 
-  // Fala com troca real de voz por Avatar (Gemini Neural 24kHz quando com API Key + Vozes Distintas do Dispositivo)
+  // Fala com sincronia labial exata: a boca SÓ começa a mexer no exato instante em que o áudio começa a sair
   public async speakWithVisemes(
     text: string,
     voiceName: VoicePersonaName | string,
-    onComplete?: () => void
+    onComplete?: () => void,
+    onAudioStart?: () => void
   ) {
     this.interrupt();
 
     const cleanText = text.replace(/[*#`_~]/g, '').trim();
     if (!cleanText) {
+      onAudioStart?.();
       onComplete?.();
       return;
     }
@@ -388,16 +403,18 @@ export class RealtimeAudioVisemeEngine {
     this.currentVoiceName = persona;
     this.currentPhonemeText = cleanText;
     this.boundaryCharIndex = -1;
-    this.speechStartTime = performance.now();
 
     const spec = VOICE_PERSONA_SPECS[persona];
     this.speechDurationMs = Math.max(
       1400,
       Math.min(18000, ((cleanText.length / 14.2) * 1000) / spec.rate)
     );
-    this.isSpeaking = true;
 
-    // 1. Se houver GEMINI_API_KEY configurada, gera o áudio neural nativo do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
+    // IMPORTANTE: Mantém isSpeaking = false enquanto o áudio está sendo sintetizado na rede,
+    // para que o avatar NÃO mexa a boca antes de o som começar a sair!
+    this.isSpeaking = false;
+
+    // 1. Se houver GEMINI_API_KEY configurada, gera o áudio neural nativo 24kHz do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
     if (this.apiKey && !this.muted) {
       const abortCtrl = new AbortController();
       this.activeAbortController = abortCtrl;
@@ -412,14 +429,22 @@ export class RealtimeAudioVisemeEngine {
       if (abortCtrl.signal.aborted) return;
 
       if (pcmBase64) {
-        this.speechStartTime = performance.now();
-        this.enqueuePcm24kBase64(pcmBase64, onComplete);
+        this.enqueuePcm24kBase64(pcmBase64, onComplete, onAudioStart);
         return;
       }
     }
 
-    // 2. Síntese Neural do Dispositivo com Seleção de Vozes Femininas/Masculinas Distintas e Tom Calibrado
+    // 2. Fallback: Síntese Neural do Dispositivo (só ativa isSpeaking quando utter.onstart dispara!)
     let completed = false;
+    let started = false;
+    const markStarted = () => {
+      if (started) return;
+      started = true;
+      this.speechStartTime = performance.now();
+      this.isSpeaking = true;
+      onAudioStart?.();
+    };
+
     const finishSpeech = () => {
       if (completed) return;
       completed = true;
@@ -439,7 +464,6 @@ export class RealtimeAudioVisemeEngine {
         const selected = this.selectVoiceForPersona(persona);
         this.lastSelectedVoiceLabel = selected.resolvedLabel;
 
-        // Divide em sentenças curtas para evitar que o Chrome Mobile corte falas longas ou ignore o pitch
         const sentences = cleanText
           .split(/(?<=[.!?])\s+/)
           .map((s) => s.trim())
@@ -462,7 +486,12 @@ export class RealtimeAudioVisemeEngine {
           const baseOffset = charOffset;
           charOffset += sentence.length + 1;
 
+          utter.onstart = () => {
+            markStarted();
+          };
+
           utter.onboundary = (ev) => {
+            markStarted();
             if (typeof ev.charIndex === 'number') {
               this.boundaryCharIndex = baseOffset + ev.charIndex;
             }
@@ -476,16 +505,17 @@ export class RealtimeAudioVisemeEngine {
           window.speechSynthesis.speak(utter);
         });
       } catch {
-        // Fallback por timer
+        markStarted();
       }
     } else {
       const selected = this.selectVoiceForPersona(persona);
       this.lastSelectedVoiceLabel = selected.resolvedLabel;
+      markStarted();
     }
 
     this.fallbackTimer = setTimeout(() => {
       finishSpeech();
-    }, this.speechDurationMs + 1200);
+    }, this.speechDurationMs + 1800);
   }
 
   // Corte imediato de áudio
@@ -525,7 +555,7 @@ export class RealtimeAudioVisemeEngine {
     }
   }
 
-  // Amostragem de Visemas a 60 FPS
+  // Amostragem de Visemas a 60 FPS sincronizada diretamente com a forma de onda (RMS) e espectro (FFT)
   public sampleVisemes(deltaSec: number): VisemeWeights {
     this.blinkTimer += deltaSec;
     if (!this.isBlinking && this.blinkTimer >= this.nextBlinkAt) {
@@ -554,20 +584,73 @@ export class RealtimeAudioVisemeEngine {
       };
     }
 
-    let lowEnergy = 0;
-    let midEnergy = 0;
-    let highEnergy = 0;
+    const spec = VOICE_PERSONA_SPECS[this.currentVoiceName] || VOICE_PERSONA_SPECS.Aoede;
 
+    // Quando reproduzindo stream PCM neural 24kHz, a boca responde 100% ao sinal de áudio real que está saindo agora
     if (this.analyser && this.hasActivePcmStream) {
       this.analyser.getByteFrequencyData(this.freqData);
+      this.analyser.getByteTimeDomainData(this.timeData);
+
+      let sumSq = 0;
+      for (let i = 0; i < this.timeData.length; i++) {
+        const centered = (this.timeData[i] - 128) / 128;
+        sumSq += centered * centered;
+      }
+      const rms = Math.sqrt(sumSq / this.timeData.length);
+
+      let lowEnergy = 0;
+      let midEnergy = 0;
+      let highEnergy = 0;
       for (let i = 1; i < 12; i++) lowEnergy += this.freqData[i];
       for (let i = 12; i < 48; i++) midEnergy += this.freqData[i];
       for (let i = 48; i < 110; i++) highEnergy += this.freqData[i];
       lowEnergy = lowEnergy / (11 * 255);
       midEnergy = midEnergy / (36 * 255);
       highEnergy = highEnergy / (62 * 255);
+
+      // Gate de silêncio: fecha a boca imediatamente durante pausas e respirações no áudio
+      if (rms < 0.011 && lowEnergy + midEnergy < 0.032) {
+        return {
+          jawOpen: 0,
+          mouthSmile: 0.18,
+          mouthRound: 0,
+          mouthWide: 0.08,
+          browLift: 0,
+          eyeBlink,
+          energy: 0,
+          pitchHz: 0,
+          dominantBand: 'silent',
+        };
+      }
+
+      const jawOpen = Math.min(1, Math.max(0, (rms - 0.01) * 4.4 + lowEnergy * 1.45 + midEnergy * 0.85));
+      const mouthRound = Math.min(1, Math.max(0, midEnergy * 1.95 + (rms - 0.01) * 1.1));
+      const mouthWide = Math.min(1, Math.max(0.08, highEnergy * 2.25 + lowEnergy * 0.75));
+      const energy = Math.min(1, jawOpen * 0.6 + mouthRound * 0.25 + mouthWide * 0.25);
+
+      const dominantBand: VisemeWeights['dominantBand'] =
+        energy < 0.05
+          ? 'silent'
+          : mouthRound > mouthWide && mouthRound > 0.42
+          ? 'mid'
+          : mouthWide > 0.48
+          ? 'high'
+          : 'low';
+
+      return {
+        jawOpen,
+        mouthSmile: 0.2 + energy * 0.18,
+        mouthRound,
+        mouthWide,
+        browLift: Math.min(1, energy * 0.6),
+        eyeBlink,
+        energy,
+        pitchHz: Math.round(spec.baseFormantHz + energy * 95),
+        dominantBand,
+      };
     }
 
+    // Fallback para síntese local do dispositivo (sincronizado com onstart e onboundary)
     const elapsed = performance.now() - this.speechStartTime;
     const progress =
       this.speechDurationMs > 0
@@ -578,7 +661,7 @@ export class RealtimeAudioVisemeEngine {
     let phonemeRound = 0;
     let phonemeWide = 0;
 
-    if (this.currentPhonemeText.length > 0 && !this.hasActivePcmStream) {
+    if (this.currentPhonemeText.length > 0) {
       const estimatedIdx = Math.floor(progress * this.currentPhonemeText.length);
       const idx =
         this.boundaryCharIndex >= 0
@@ -592,35 +675,33 @@ export class RealtimeAudioVisemeEngine {
       const wave = 0.62 + 0.38 * Math.sin(elapsed * 0.034);
 
       if ('aáâãà'.includes(ch)) {
-        phonemeJaw = 0.86 * wave;
-        phonemeWide = 0.55 * wave;
+        phonemeJaw = 0.82 * wave;
+        phonemeWide = 0.52 * wave;
       } else if ('oóôõuú'.includes(ch)) {
-        phonemeJaw = 0.64 * wave;
-        phonemeRound = 0.88 * wave;
+        phonemeJaw = 0.6 * wave;
+        phonemeRound = 0.84 * wave;
       } else if ('eéêií'.includes(ch)) {
-        phonemeJaw = 0.5 * wave;
-        phonemeWide = 0.84 * wave;
+        phonemeJaw = 0.48 * wave;
+        phonemeWide = 0.8 * wave;
       } else if ('mpb'.includes(ch)) {
-        phonemeJaw = 0.04;
-        phonemeRound = 0.15;
-      } else if ('szfvcx'.includes(ch)) {
-        phonemeJaw = 0.28 * wave;
-        phonemeWide = 0.62 * wave;
-      } else if (' .,;!?'.includes(ch)) {
         phonemeJaw = 0.03;
+        phonemeRound = 0.12;
+      } else if ('szfvcx'.includes(ch)) {
+        phonemeJaw = 0.25 * wave;
+        phonemeWide = 0.58 * wave;
+      } else if (' .,;!?'.includes(ch)) {
+        phonemeJaw = 0.02;
       } else {
-        phonemeJaw = 0.44 * wave;
-        phonemeRound = 0.3 * wave;
-        phonemeWide = 0.36 * wave;
+        phonemeJaw = 0.4 * wave;
+        phonemeRound = 0.28 * wave;
+        phonemeWide = 0.34 * wave;
       }
     }
 
-    const jawOpen = Math.min(1, Math.max(phonemeJaw, lowEnergy * 2.2 + midEnergy * 1.4));
-    const mouthRound = Math.min(1, Math.max(phonemeRound, midEnergy * 1.8));
-    const mouthWide = Math.min(1, Math.max(phonemeWide, highEnergy * 2.1));
+    const jawOpen = Math.min(1, phonemeJaw);
+    const mouthRound = Math.min(1, phonemeRound);
+    const mouthWide = Math.min(1, phonemeWide);
     const energy = Math.min(1, jawOpen * 0.6 + mouthRound * 0.25 + mouthWide * 0.25);
-
-    const spec = VOICE_PERSONA_SPECS[this.currentVoiceName] || VOICE_PERSONA_SPECS.Aoede;
 
     const dominantBand: VisemeWeights['dominantBand'] =
       energy < 0.05
@@ -914,18 +995,13 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 2);
-    const maxSentences = Math.max(1, Math.min(avatar.guardrails.maxResponseSentences || 2, 3));
+    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 3);
+    const maxSentences = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 4));
 
     if (this.apiKey) {
-      const systemInstruction = compileSystemInstruction(avatar, documents);
-      const ragContextText =
-        citations.length > 0
-          ? `\n\n[FATOS DE APOIO RELACIONADOS (use apenas se ajudar a responder diretamente à pergunta do usuário, em até ${maxSentences} frases curtas e sem citar fonte)]:\n` +
-            citations.map((c) => c.excerpt).join('\n\n')
-          : `\n\n[Instrução: Responda diretamente ao que o usuário perguntou em até ${maxSentences} frases curtas e naturais.]`;
+      const systemInstruction = compileSystemInstruction(avatar, documents, citations);
 
-      // Constrói histórico recente do diálogo para manter contexto real da conversa
+      // Constrói histórico recente do diálogo limpo (sem tags artificiais) para manter fluxo natural estilo Gemini Live / GPT Live
       const historyContents: Array<{
         role: 'user' | 'model';
         parts: Array<Record<string, unknown>>;
@@ -933,7 +1009,7 @@ export class GeminiLiveSessionManager {
 
       const validHistory = recentTurns
         .filter((t) => (t.speaker === 'user' || t.speaker === 'avatar') && t.text.trim().length > 0)
-        .slice(-6);
+        .slice(-8);
 
       for (const turn of validHistory) {
         const role = turn.speaker === 'user' ? 'user' : 'model';
@@ -952,14 +1028,14 @@ export class GeminiLiveSessionManager {
       while (historyContents.length > 0 && historyContents[0].role !== 'user') {
         historyContents.shift();
       }
-      // Se o último item do histórico for 'user', mescla ou remove para adicionar a pergunta atual
+      // Se o último item do histórico já for 'user', remove para substituir pelo turno atual
       if (historyContents.length > 0 && historyContents[historyContents.length - 1].role === 'user') {
         historyContents.pop();
       }
 
       const userParts: Array<Record<string, unknown>> = [
         {
-          text: `Pergunta do usuário: "${inputGuard.sanitizedText}"${ragContextText}`,
+          text: inputGuard.sanitizedText,
         },
       ];
 
@@ -977,13 +1053,13 @@ export class GeminiLiveSessionManager {
         parts: userParts,
       });
 
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash-lite'];
       for (const modelId of candidateModels) {
         try {
           const is25 = modelId.startsWith('gemini-2.5');
           const generationConfig: Record<string, unknown> = {
-            temperature: avatar.geminiConfig.temperature,
-            maxOutputTokens: 380,
+            temperature: Math.max(0.45, avatar.geminiConfig.temperature),
+            maxOutputTokens: 320,
           };
           if (is25) {
             generationConfig.thinkingConfig = { thinkingBudget: 0 };
@@ -1017,11 +1093,16 @@ export class GeminiLiveSessionManager {
             if (rawReply) {
               const naturalReply = formatNaturalSpokenReply(rawReply, maxSentences);
               const outGuard = evaluateRealtimeGuardrails(naturalReply, 'avatar_output', avatar);
+              const { emotion, gesture } = inferEmotionAndGesture(
+                outGuard.sanitizedText,
+                !outGuard.allowed,
+                citations.length > 0
+              );
               return {
                 replyText: outGuard.sanitizedText,
                 citations,
-                emotion: !outGuard.allowed ? 'alert' : citations.length > 0 ? 'thinking' : 'happy',
-                gesture: !outGuard.allowed ? 'emphasis' : 'explain',
+                emotion,
+                gesture,
                 wasBlocked: !outGuard.allowed,
                 latencyMs: Math.round(performance.now() - t0),
                 modeUsed: this.isLiveWsConnected() ? 'gemini_live_ws' : 'gemini_rest',
