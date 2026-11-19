@@ -650,6 +650,9 @@ export function App() {
     if (!audio || !turn.text.trim()) return;
 
     audio.initAudioContext();
+    if (geminiApiKey) {
+      audio.setApiKey(geminiApiKey);
+    }
 
     // Se clicar no mesmo trecho que já está sendo reproduzido, interrompe
     if (replayingTurnId === turn.id && isSpeaking) {

@@ -93,6 +93,7 @@ export class RealtimeAudioVisemeEngine {
   private apiKey = '';
   private cachedVoices: SpeechSynthesisVoice[] = [];
   private activeAbortController: AbortController | null = null;
+  private pcmAudioCache: Map<string, string> = new Map();
 
   constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -167,7 +168,7 @@ export class RealtimeAudioVisemeEngine {
     return this.isSpeaking;
   }
 
-  // Seleciona vozes reais e distintas (Android, iOS, Windows, macOS) para cada persona
+  // Seleciona EXCLUSIVAMENTE vozes em Português do Brasil (pt-BR), bloqueando vozes de Portugal (pt-PT)
   public selectVoiceForPersona(voiceName: VoicePersonaName): {
     voice: SpeechSynthesisVoice | null;
     pitch: number;
@@ -182,21 +183,45 @@ export class RealtimeAudioVisemeEngine {
         voice: null,
         pitch: spec.pitch,
         rate: spec.rate,
-        resolvedLabel: `${voiceName} (Pitch ${spec.pitch}x)`,
+        resolvedLabel: `${voiceName} pt-BR (Pitch ${spec.pitch}x)`,
       };
     }
 
-    // Filtra vozes em Português (pt-BR, pt_BR, pt-PT)
-    const ptVoices = allVoices.filter(
-      (v) => /^pt([-_]|$)/i.test(v.lang.trim()) || /portugu/i.test(v.name)
-    );
-    const pool = ptVoices.length > 0 ? ptVoices : allVoices;
+    // Detecta e exclui explicitamente vozes de Portugal (pt-PT)
+    const isPortugalVoice = (v: SpeechSynthesisVoice): boolean => {
+      const tag = `${v.lang} ${v.name}`.toLowerCase();
+      return (
+        /pt[-_]pt\b/.test(tag) ||
+        /portugal|europeu|european|\bjoana\b|\bcatarina\b|\braquel\b|\bines\b|\binês\b|\bamalia\b|\bamália\b|\bjoaquim\b|\bcristiano\b|\bduarte\b|\bafonso\b|\btomas\b|\btomás\b/i.test(
+          tag
+        )
+      );
+    };
 
-    // Pontuação de qualidade (prioriza vozes Network/Natural/Neural/Premium de alta definição)
+    // Prioriza estritamente Português do Brasil (pt-BR)
+    const ptBrVoices = allVoices.filter((v) => {
+      if (isPortugalVoice(v)) return false;
+      const lang = v.lang.trim().toLowerCase();
+      const name = v.name.toLowerCase();
+      return (
+        /^pt[-_]br\b/.test(lang) ||
+        name.includes('brasil') ||
+        name.includes('brazil') ||
+        (/^pt\b/.test(lang) && !lang.includes('pt-pt') && !lang.includes('pt_pt'))
+      );
+    });
+
+    const pool =
+      ptBrVoices.length > 0
+        ? ptBrVoices
+        : allVoices.filter((v) => !isPortugalVoice(v));
+
+    // Pontuação de qualidade (prioriza vozes pt-BR Network/Natural/Neural/Premium de alta definição)
     const scoreVoice = (v: SpeechSynthesisVoice): number => {
       const n = v.name.toLowerCase();
+      const l = v.lang.toLowerCase();
       let s = 0;
-      if (v.lang.toLowerCase().includes('br')) s += 30;
+      if (l.includes('br') || n.includes('brasil') || n.includes('brazil')) s += 80;
       if (n.includes('natural') || n.includes('neural')) s += 60;
       if (n.includes('network') || n.includes('online')) s += 45;
       if (n.includes('premium') || n.includes('enhanced')) s += 40;
@@ -210,18 +235,18 @@ export class RealtimeAudioVisemeEngine {
         n.includes('fabio') ||
         n.includes('daniel')
       ) {
-        s += 25;
+        s += 35;
       }
       return s;
     };
 
     const sortedPool = [...pool].sort((a, b) => scoreVoice(b) - scoreVoice(a));
 
-    // Identificadores femininos e masculinos incluindo códigos internos do Android (afs, bmf, pte, bmm, ptd) e iOS/Desktop
+    // Identificadores femininos e masculinos EXCLUSIVOS pt-BR (sem nomes de vozes pt-PT)
     const femaleRegex =
-      /francisca|thalita|luciana|maria|joana|yara|fernanda|catarina|helena|vitoria|vitória|camila|leticia|leila|raquel|shelley|flo|sandy|samantha|victoria|female|feminina|mulher|\bafs\b|\bbmf\b|\bptc\b|\bsfg\b|#f\b/i;
+      /francisca|thalita|luciana|maria|yara|fernanda|helena|vitoria|vitória|camila|leticia|leila|female|feminina|mulher|\bafs\b|\bbmf\b|\bptc\b|\bsfg\b|#f\b/i;
     const maleRegex =
-      /antonio|antônio|fabio|fábio|daniel|felipe|joaquim|humberto|nicolau|ricardo|cristiano|jorge|lucas|marcelo|donato|duarte|reed|rocko|eddy|alex|male|masculino|homem|\bpte\b|\bbmm\b|\bptd\b|\bsfm\b|#m\b/i;
+      /antonio|antônio|fabio|fábio|daniel|felipe|humberto|nicolau|ricardo|jorge|lucas|marcelo|donato|male|masculino|homem|\bpte\b|\bbmm\b|\bptd\b|\bsfm\b|#m\b/i;
 
     const femaleVoices = sortedPool.filter((v) => femaleRegex.test(v.name));
     const maleVoices = sortedPool.filter((v) => maleRegex.test(v.name));
@@ -229,38 +254,34 @@ export class RealtimeAudioVisemeEngine {
     let chosenVoice: SpeechSynthesisVoice | null = null;
 
     if (spec.gender === 'female') {
-      if (femaleVoices.length > spec.variantIndex) {
-        chosenVoice = femaleVoices[spec.variantIndex];
-      } else if (femaleVoices.length > 0) {
-        chosenVoice = femaleVoices[0];
-      } else {
-        chosenVoice = sortedPool[spec.variantIndex % sortedPool.length];
+      if (femaleVoices.length > 0) {
+        chosenVoice = femaleVoices[spec.variantIndex % femaleVoices.length];
+      } else if (sortedPool.length > 0) {
+        chosenVoice = sortedPool[0];
       }
     } else {
-      if (maleVoices.length > spec.variantIndex) {
-        chosenVoice = maleVoices[spec.variantIndex];
-      } else if (maleVoices.length > 0) {
-        chosenVoice = maleVoices[0];
+      if (maleVoices.length > 0) {
+        chosenVoice = maleVoices[spec.variantIndex % maleVoices.length];
       } else if (sortedPool.length > 1) {
         const altIndex = Math.min(
           sortedPool.length - 1,
           1 + (spec.variantIndex % Math.max(1, sortedPool.length - 1))
         );
         chosenVoice = sortedPool[altIndex];
-      } else {
+      } else if (sortedPool.length > 0) {
         chosenVoice = sortedPool[0];
       }
     }
 
     const shortVoiceName = chosenVoice
       ? chosenVoice.name.replace(/^Microsoft |^Google /i, '').slice(0, 26)
-      : ' Padrão';
+      : 'pt-BR Padrão';
 
     return {
       voice: chosenVoice,
       pitch: spec.pitch,
       rate: spec.rate,
-      resolvedLabel: `${voiceName} → ${shortVoiceName} (Tom ${Math.round(spec.pitch * 100)}%)`,
+      resolvedLabel: `${voiceName} (pt-BR) → ${shortVoiceName}`,
     };
   }
 
@@ -330,18 +351,36 @@ export class RealtimeAudioVisemeEngine {
     };
   }
 
-  // Sintetiza áudio neural 24kHz PCM direto pela API de TTS do Gemini usando EXCLUSIVAMENTE o texto da resposta
+  // Sintetiza áudio neural 24kHz PCM direto pela API de TTS do Gemini com CACHE em memória
+  // (Ao clicar no histórico para ouvir novamente, reproduz exatamente o mesmo áudio instantaneamente sem gastar cota!)
   private async trySynthesizeGeminiNativeAudio(
     cleanText: string,
     persona: VoicePersonaName,
     signal: AbortSignal
   ): Promise<string | null> {
+    const cacheKey = `${persona}::${cleanText}`;
+    const cachedPcm = this.pcmAudioCache.get(cacheKey);
+    if (cachedPcm) {
+      return cachedPcm;
+    }
+
     if (!this.apiKey) return null;
 
-    const ttsModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts'];
+    const ttsModels = [
+      'gemini-2.5-flash-preview-tts',
+      'gemini-2.5-pro-preview-tts',
+      'gemini-2.5-flash-preview-tts',
+    ];
 
-    for (const model of ttsModels) {
+    for (let attempt = 0; attempt < ttsModels.length; attempt++) {
+      const model = ttsModels[attempt];
       try {
+        if (attempt === 2) {
+          // Pequena pausa caso tenha ocorrido rate-limit (429) nos cliques rápidos
+          await new Promise((r) => setTimeout(r, 750));
+          if (signal.aborted) return null;
+        }
+
         const resp = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
             this.apiKey
@@ -371,7 +410,9 @@ export class RealtimeAudioVisemeEngine {
           const parts = data?.candidates?.[0]?.content?.parts || [];
           for (const part of parts) {
             if (part?.inlineData?.data && part?.inlineData?.mimeType?.includes('audio')) {
-              return String(part.inlineData.data);
+              const pcmBase64 = String(part.inlineData.data);
+              this.pcmAudioCache.set(cacheKey, pcmBase64);
+              return pcmBase64;
             }
           }
         }
@@ -414,8 +455,8 @@ export class RealtimeAudioVisemeEngine {
     // para que o avatar NÃO mexa a boca antes de o som começar a sair!
     this.isSpeaking = false;
 
-    // 1. Se houver GEMINI_API_KEY configurada, gera o áudio neural nativo 24kHz do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
-    if (this.apiKey && !this.muted) {
+    // 1. Se já estiver em cache ou houver GEMINI_API_KEY configurada, usa o áudio neural nativo 24kHz do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
+    if ((this.apiKey || this.pcmAudioCache.has(`${persona}::${cleanText}`)) && !this.muted) {
       const abortCtrl = new AbortController();
       this.activeAbortController = abortCtrl;
       this.lastSelectedVoiceLabel = `Gemini Neural 24kHz (${persona})`;
@@ -434,7 +475,7 @@ export class RealtimeAudioVisemeEngine {
       }
     }
 
-    // 2. Fallback: Síntese Neural do Dispositivo (só ativa isSpeaking quando utter.onstart dispara!)
+    // 2. Fallback: Síntese Neural do Dispositivo estritamente em pt-BR (só ativa isSpeaking quando utter.onstart dispara!)
     let completed = false;
     let started = false;
     const markStarted = () => {
@@ -474,11 +515,11 @@ export class RealtimeAudioVisemeEngine {
 
         chunksToSpeak.forEach((sentence, idx) => {
           const utter = new SpeechSynthesisUtterance(sentence);
-          utter.lang = 'pt-BR';
           if (selected.voice) {
             utter.voice = selected.voice;
-            utter.lang = selected.voice.lang || 'pt-BR';
           }
+          // Força sempre Português do Brasil (pt-BR), nunca pt-PT
+          utter.lang = 'pt-BR';
           utter.pitch = selected.pitch;
           utter.rate = selected.rate;
           utter.volume = 1.0;
