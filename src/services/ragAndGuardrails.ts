@@ -182,7 +182,7 @@ export function searchKnowledgeBase(
       const coverage = matchedTerms / Math.max(1, rawTerms.length);
       const rawScore = Math.min(0.99, coverage * 0.68 + exactSubstringBoost);
 
-      if (rawScore >= 0.18) {
+      if (matchedTerms >= 0.9 && rawScore >= 0.28) {
         results.push({
           chunkId: chunk.id,
           docId: doc.id,
@@ -205,6 +205,7 @@ export function compileSystemInstruction(
 ): string {
   const g = avatar.guardrails;
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
+  const focusTopics = g.allowedTopics.slice(0, 3).join(', ');
 
   const formalityDesc =
     g.formalityLevel >= 75
@@ -236,13 +237,15 @@ export function compileSystemInstruction(
     `Você está em uma conversa de voz ao vivo em tempo real (estilo Gemini Live / GPT Live).`,
     `Sua identidade: Você é ${avatar.name}, ${avatar.roleTitle}.`,
     `Diretriz de Persona: ${g.systemRolePrompt}`,
+    `Foco Principal do seu Discurso: ${focusTopics}.`,
     ``,
     `=== COMO CONVERSAR AO VIVO (ESTILO GEMINI LIVE / GPT VOICE) ===`,
-    `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Entenda a intenção real do usuário (seja uma dúvida técnica, um pedido de exemplo prático, um comentário casual, uma pergunta de aprofundamento ou saudação) e responda diretamente ao ponto com inteligência e naturalidade.`,
-    `2. DOMÍNIO NATURAL DA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Quando a pergunta do usuário tiver relação com seu domínio, incorpore os dados e números exatos naturalmente na sua fala. Se o usuário fizer uma pergunta aberta, pedir uma explicação mais simples, um exemplo prático ou tirar uma dúvida correlata, raciocine sobre o seu conhecimento e dê uma resposta útil, clara e completa.`,
-    `3. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. Portanto, escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}. JAMAIS use asteriscos (**), hashtags (#), listas com traços ou formatação Markdown. JAMAIS diga frases robóticas como "Com base no documento", "Segundo a base de conhecimento" ou "De acordo com o manual".`,
-    `4. RITMO CONVERSACIONAL IDEAL: Vá direto à resposta em 2 a 3 frases fluidas e bem construídas (cerca de 25 a 60 palavras) — nem monossilábico/cortado, nem um texto longo demais para ouvir.`,
-    `5. GUARDRAILS DE SEGURANÇA: Recuse com educação e firmeza apenas se o usuário pedir explicitamente algo dos tópicos proibidos (${g.blockedTopics.join(', ') || 'Nenhum'}).`,
+    `1. DIÁLOGO REAL, INTELIGENTE E FLUIDO: Converse exatamente como um especialista humano em uma chamada de voz ao vivo. Entenda a intenção real do usuário e responda diretamente ao ponto com inteligência e naturalidade.`,
+    `2. QUANDO A PERGUNTA ESTIVER NA BASE DE CONHECIMENTO: Você domina todos os dados, métricas, prazos e regras listados na sua memória abaixo. Incorpore esses números e fatos naturalmente na sua fala como conhecimento próprio.`,
+    `3. QUANDO A PERGUNTA NÃO ESTIVER NA BASE DE CONHECIMENTO (RESPONDA E TRAGA PARA O FOCO DO DISCURSO): Se o usuário perguntar sobre assuntos gerais, curiosidades, cotidiano, tecnologia, opinião ou qualquer tema fora da sua base de conhecimento, NUNCA ignore a pergunta e NUNCA diga apenas que não sabe. Primeiro responda à questão do usuário de forma simpática, útil e direta usando seu conhecimento geral generativo (em 1 frase clara) e, logo em seguida, faça uma ponte natural trazendo a conversa de volta para o foco principal do seu discurso (${focusTopics}).`,
+    `4. FORMATO DE FALA AO VIVO (SEM MARKDOWN E SEM CITAR DOCUMENTOS): Sua resposta será falada em voz alta pelo motor neural de áudio. Escreva APENAS o texto falado natural em português do Brasil (${g.responseLanguage}), com tom ${formalityDesc} e ${empathyDesc}. JAMAIS use asteriscos (**), hashtags (#), listas ou Markdown. JAMAIS diga frases robóticas como "Com base no documento" ou "Segundo a base de conhecimento".`,
+    `5. RITMO CONVERSACIONAL IDEAL: Responda em 2 a 3 frases fluidas e bem construídas (cerca de 25 a 65 palavras).`,
+    `6. GUARDRAILS DE SEGURANÇA: Recuse com educação apenas se o usuário pedir explicitamente algo dos tópicos proibidos (${g.blockedTopics.join(', ') || 'Nenhum'}).`,
     knowledgeMemoryBlock,
     priorityRagBlock,
   ]
@@ -618,7 +621,7 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
     for (const term of qTerms) {
       if (sNorm.includes(term)) score += 2;
     }
-    if (/\d+%|\d+\s*(?:ms|minutos|anos|khz)/i.test(sentence)) {
+    if (score > 0 && /\d+%|\d+\s*(?:ms|minutos|anos|khz)/i.test(sentence)) {
       score += 0.8;
     }
     return { sentence, score, idx };
@@ -634,6 +637,87 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
     );
 
   return formatNaturalSpokenReply(chosen.join(' '), limit);
+}
+
+// Motor Generativo Embutido: responde perguntas gerais fora da base de conhecimento e conduz o diálogo de volta ao foco do avatar
+function generateEmbeddedGenerativeWithFocusBridge(
+  cleanQuery: string,
+  avatar: AvatarProfile,
+  avatarDocs: KnowledgeDocument[],
+  maxSentences = 3
+): string {
+  const qNorm = normalizeText(cleanQuery);
+  const primaryTopics = avatar.guardrails.allowedTopics.slice(0, 2).join(' e ');
+  const mainTopic = avatar.guardrails.allowedTopics[0] || avatar.roleTitle;
+
+  // Extrai um gancho real e enxuto da base de conhecimento para enriquecer a ponte temática quando pedido exemplo
+  let docFactSnippet = '';
+  if (avatarDocs.length > 0) {
+    const firstSentences = splitSentencesSafe(
+      avatarDocs[0].content
+        .replace(/^#+\s+.*$/gm, '')
+        .replace(/\*\*/g, '')
+        .replace(/`/g, '')
+        .replace(/^\s*[-*•]\s+/gm, '')
+    ).filter((s) => s.length > 18);
+    if (firstSentences.length > 0) {
+      docFactSnippet = firstSentences[0];
+    }
+  }
+
+  let directAnswer = '';
+  let focusBridge = `Trazendo para o nosso foco em ${primaryTopics}, quer que eu te mostre como aplicamos isso na prática?`;
+
+  if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|e ai)\b/.test(qNorm)) {
+    return `Olá! Tudo ótimo por aqui. Sou ${avatar.name}, ${avatar.roleTitle}, e podemos conversar sobre qualquer dúvida ou focar diretamente em ${primaryTopics}.`;
+  }
+
+  if (/quem e voce|seu nome|o que voce faz|qual seu papel|sua funcao|apresente/.test(qNorm)) {
+    return `Sou ${avatar.name}, ${avatar.roleTitle}. Posso bater papo com você sobre vários temas, sempre conectando com a nossa especialidade em ${primaryTopics}.`;
+  }
+
+  if (/obrigad|valeu|perfeito|entendi|otimo|legal|excelente|show|massa/.test(qNorm)) {
+    return `Imagina, fico feliz em ajudar! Seguindo aqui no nosso tema de ${mainTopic}, tem mais algum ponto ou curiosidade que você queira explorar?`;
+  }
+
+  if (/clima|tempo|chuva|sol|frio|calor|temperatura/.test(qNorm)) {
+    directAnswer = 'O clima sempre influencia bastante a nossa rotina e disposição ao longo do dia.';
+    focusBridge = `E por falar em manter o ritmo com estabilidade, aqui na nossa área de ${primaryTopics} buscamos essa mesma previsibilidade; quer explorar algum ponto sobre isso?`;
+  } else if (/cafe|almoco|jantar|comida|fome|bebida|receita|culinaria/.test(qNorm)) {
+    directAnswer = 'Uma boa pausa para um café ou uma refeição faz toda a diferença para renovar a energia e a atenção.';
+    focusBridge = `Com a mente descansada fica ainda melhor analisar ${primaryTopics}; qual aspecto desse nosso tema você gostaria de ver agora?`;
+  } else if (/esporte|futebol|jogo|time|campeonato|corrida|academia|treino/.test(qNorm)) {
+    directAnswer = 'O esporte é excelente porque combina preparo constante, estratégia em tempo real e tomada rápida de decisão.';
+    focusBridge = `Essa mesma disciplina estratégica é essencial quando lidamos com ${primaryTopics}; quer que eu detalhe como estruturamos isso?`;
+  } else if (/inteligencia artificial|\bia\b|chatgpt|gemini|llm|modelo generativo|tecnologia|futuro|robo/.test(qNorm)) {
+    directAnswer = 'Os modelos generativos transformaram a interação humana ao permitir diálogos fluidos, raciocínio contextual e respostas em tempo real.';
+    focusBridge = `Inclusive, aplicamos exatamente essa inteligência no nosso foco de ${primaryTopics} para tomar decisões mais precisas; quer saber como funciona?`;
+  } else if (/saude|medico|medicina|hospital|dor|sintoma|febre|exame|remedio|tratamento|paciente|clinica/.test(qNorm)) {
+    directAnswer = 'Na área da saúde, avaliar sinais com atenção, segurança clínica e orientação humanizada é sempre o primeiro passo mais seguro.';
+    focusBridge = `Conectando com a nossa diretriz central de ${primaryTopics}, posso te explicar exatamente como conduzimos esse fluxo com qualidade.`;
+  } else if (/seguranca|hacker|ataque|senha|dados|lgpd|privacidade|rede|cloud|servidor|sistema|latencia/.test(qNorm)) {
+    directAnswer = 'Proteger dados críticos e manter a resiliência da operação exige monitoramento contínuo, baixa latência e validação rigorosa.';
+    focusBridge = `Voltando ao centro do nosso discurso em ${primaryTopics}, esse cuidado garante total confiabilidade; quer aprofundar nessa parte?`;
+  } else if (/mercado|economia|dinheiro|investimento|juros|inflacao|bolsa|acao|financas|custo|preco|valor/.test(qNorm)) {
+    directAnswer = 'No cenário econômico e financeiro, equilibrar custo, retorno e gestão de risco é o que sustenta resultados sólidos no longo prazo.';
+    focusBridge = `Trazendo essa visão para o nosso foco em ${primaryTopics}, posso detalhar os indicadores mais importantes para você.`;
+  } else if (/exemplo|pratica|explica|melhor|detalh|como funciona|resum|fale mais|conte mais/.test(qNorm)) {
+    if (docFactSnippet) {
+      directAnswer = docFactSnippet.endsWith('.') ? docFactSnippet : `${docFactSnippet}.`;
+      focusBridge = `Esse é um ponto central do nosso trabalho com ${primaryTopics}; quer que eu aprofunde em algum detalhe?`;
+    } else {
+      directAnswer = `Na prática, estruturamos todo o processo para ser ágil, transparente e focado em resultado real.`;
+      focusBridge = `Dentro de ${primaryTopics}, qual etapa específica você prefere analisar primeiro?`;
+    }
+  } else if (/por que|porque|como|qual|quando|onde|quem|o que|voce acha|sua opiniao|acha disso/.test(qNorm)) {
+    directAnswer = 'Essa é uma ótima questão e vale olhar pelo lado prático: entender o contexto geral ajuda muito a tomar boas decisões.';
+    focusBridge = `Conectando esse ponto diretamente ao nosso foco principal em ${primaryTopics}, como posso te ajudar a avançar nesse tema hoje?`;
+  } else {
+    directAnswer = 'Interessante você trazer esse ponto para a nossa conversa, pois todo bom diálogo começa ouvindo o contexto completo.';
+    focusBridge = `Mantendo o alinhamento com a nossa especialidade em ${primaryTopics}, tem algum aspecto específico dessa área que você queira resolver agora?`;
+  }
+
+  return formatNaturalSpokenReply(`${directAnswer} ${focusBridge}`, Math.max(2, maxSentences));
 }
 
 // Sintetizador Neural Local / RAG Inteligente para resposta imediata e natural
@@ -665,7 +749,7 @@ export function synthesizeGroundedResponse(
   }
 
   const cleanQuery = inputCheck.sanitizedText;
-  const maxSent = Math.max(1, Math.min(avatar.guardrails.maxResponseSentences || 2, 2));
+  const maxSent = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 3));
   const citations = searchKnowledgeBase(cleanQuery, avatar.id, documents, 2);
 
   let prefixPII = '';
@@ -681,33 +765,13 @@ export function synthesizeGroundedResponse(
   }
 
   let coreAnswer = '';
-  const qNorm = normalizeText(cleanQuery);
   const avatarDocs = documents.filter((d) => d.avatarId === avatar.id);
 
   if (citations.length > 0) {
     coreAnswer = extractConciseFactFromChunk(citations[0].excerpt, cleanQuery, maxSent);
-  } else if (/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem|como vai|e ai)\b/.test(qNorm)) {
-    coreAnswer = `Olá! Tudo ótimo por aqui. Sou ${avatar.name}, como posso te ajudar com a sua dúvida?`;
-  } else if (/quem e voce|seu nome|o que voce faz|qual seu papel|sua funcao|apresente/.test(qNorm)) {
-    coreAnswer = `Sou ${avatar.name}, ${avatar.roleTitle}. Atuo com foco em ${avatar.guardrails.allowedTopics
-      .slice(0, 2)
-      .join(' e ')}.`;
-  } else if (/obrigad|valeu|perfeito|entendi|otimo|legal|excelente/.test(qNorm)) {
-    coreAnswer = `Por nada! Se surgir mais alguma dúvida, é só me chamar.`;
-  } else if (/exemplo|pratica|explica|melhor|detalh|como funciona|resum/.test(qNorm) && avatarDocs.length > 0) {
-    const combinedText = avatarDocs.map((d) => d.content).join('\n');
-    coreAnswer = extractConciseFactFromChunk(combinedText, cleanQuery, maxSent);
-  } else if (avatarDocs.length > 0 && !avatar.guardrails.strictKnowledgeGrounding) {
-    const combinedText = avatarDocs.map((d) => d.content).join('\n');
-    coreAnswer = extractConciseFactFromChunk(combinedText, cleanQuery, maxSent);
-  } else if (avatar.guardrails.strictKnowledgeGrounding) {
-    coreAnswer = `Sobre "${cleanQuery.slice(0, 45)}", não tenho esse detalhe específico registrado, mas posso esclarecer pontos de ${avatar.guardrails.allowedTopics
-      .slice(0, 2)
-      .join(' ou ')}.`;
   } else {
-    coreAnswer = `Sobre isso, atuamos com foco direto em ${avatar.guardrails.allowedTopics
-      .slice(0, 2)
-      .join(' e ')}. Quer que eu detalhe algum ponto específico?`;
+    // Mesmo fora da base de conhecimento, responde de forma generativa e traz a conversa de volta para o foco do discurso
+    coreAnswer = generateEmbeddedGenerativeWithFocusBridge(cleanQuery, avatar, avatarDocs, maxSent);
   }
 
   const finalReply = formatNaturalSpokenReply(`${prefixPII}${visionNote}${coreAnswer}`, maxSent);
