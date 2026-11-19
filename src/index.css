@@ -1975,8 +1975,10 @@ body,
   z-index: 120;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   height: 36px;
+  min-width: 36px;
   padding: 0 13px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1995,7 +1997,31 @@ body,
     border-color 0.18s ease,
     color 0.18s ease,
     transform 0.16s ease,
-    box-shadow 0.18s ease;
+    box-shadow 0.18s ease,
+    padding 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    gap 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.floating-theme-toggle-label {
+  display: inline-block;
+  max-width: 64px;
+  opacity: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease;
+}
+
+.floating-theme-toggle-btn.is-compact {
+  gap: 0;
+  padding: 0;
+  width: 36px;
+}
+
+.floating-theme-toggle-btn.is-compact .floating-theme-toggle-label {
+  max-width: 0;
+  opacity: 0;
 }
 
 .floating-theme-toggle-btn:hover {
@@ -2249,8 +2275,14 @@ body,
     top: 10px;
     right: 10px;
     height: 34px;
+    min-width: 34px;
     padding: 0 10px;
     font-size: 0.72rem;
+  }
+
+  .floating-theme-toggle-btn.is-compact {
+    width: 34px;
+    padding: 0;
   }
 
   .top-command-bar {

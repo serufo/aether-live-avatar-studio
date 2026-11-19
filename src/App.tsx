@@ -257,6 +257,16 @@ export function App() {
     }
   }, [theme]);
 
+  const [showThemeLabel, setShowThemeLabel] = useState<boolean>(true);
+
+  useEffect(() => {
+    setShowThemeLabel(true);
+    const timer = window.setTimeout(() => {
+      setShowThemeLabel(false);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [theme]);
+
   const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
@@ -1116,7 +1126,9 @@ export function App() {
       <button
         type="button"
         id="btn-theme-toggle"
-        className={`floating-theme-toggle-btn ${isLight ? 'is-light' : 'is-dark'}`}
+        className={`floating-theme-toggle-btn ${isLight ? 'is-light' : 'is-dark'} ${
+          showThemeLabel ? '' : 'is-compact'
+        }`}
         onClick={toggleTheme}
         data-skip-auto-greeting="true"
         aria-pressed={isLight}
@@ -1124,7 +1136,7 @@ export function App() {
         title={isLight ? 'Alternar para tema escuro' : 'Alternar para tema claro'}
       >
         {isLight ? <Moon size={15} /> : <Sun size={15} />}
-        <span className="floating-theme-toggle-label">
+        <span className="floating-theme-toggle-label" aria-hidden={!showThemeLabel}>
           {isLight ? 'Escuro' : 'Claro'}
         </span>
       </button>
