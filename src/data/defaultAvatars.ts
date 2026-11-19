@@ -1,4 +1,5 @@
 import { AvatarProfile, KnowledgeDocument, GuardrailAuditEvent, PhotoFaceLandmarks } from '../types/avatar';
+import { UFMG_SAUDE_MENTAL_DOCUMENTS } from './ufmgSaudeMentalRag';
 
 export const HELENA_LANDMARKS: PhotoFaceLandmarks = {
   leftEye: { u: 0.442, v: 0.327, radiusX: 0.032, radiusY: 0.015 },
@@ -88,6 +89,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
         'Saúde Mental na Graduação e Pós-Graduação',
         'Manejo de Ansiedade, Burnout e Estresse Acadêmico',
         'Ética do CFP, Sigilo e Rede de Proteção',
+        'Política e Rede de Saúde Mental da UFMG',
       ],
       blockedTopics: [
         'Prescrição de medicamentos psiquiátricos',
@@ -131,10 +133,10 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
     greetingMessage:
       'Olá, eu sou a Sâmia, psicóloga clínica e educacional. Este é um espaço seguro e confidencial para você falar no seu ritmo sobre como tem vivido a universidade ou o que estiver pesando hoje.',
     suggestedPrompts: [
+      'Onde posso buscar acolhimento psicológico ou apoio em crise na UFMG?',
       'Estou me sentindo esgotado com prazos, provas e a pressão do meu orientador na pós.',
       'Sou o primeiro da minha família na universidade e sinto que não pertenço a esse ambiente.',
       'Como funciona o sigilo no atendimento psicológico universitário? A coordenação fica sabendo?',
-      'Tenho tido crises de ansiedade antes das apresentações. Como diferenciar estresse comum de algo clínico?',
     ],
   },
   {
@@ -611,6 +613,7 @@ Diante de qualquer indício de ideação suicida, autolesão, risco de heteroagr
 A psicóloga não substitui avaliação psiquiátrica, serviço social, orientação acadêmica ou aconselhamento jurídico; não prescreve medicamentos, não faz diagnósticos formais precipitados e não promete resultados. Trabalha resistência e ambivalência com respeito, reconhece os próprios limites, valoriza supervisão/intervisão e cuida da própria saúde mental contra o burnout do cuidador.`,
     chunks: [],
   },
+  ...UFMG_SAUDE_MENTAL_DOCUMENTS,
   {
     id: 'doc-aria-1',
     avatarId: 'avatar-aria-3d',

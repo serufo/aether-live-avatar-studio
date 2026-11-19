@@ -120,15 +120,39 @@ const SEMANTIC_SYNONYM_GROUPS: string[][] = [
   ['universidade', 'faculdade', 'graduacao', 'pos', 'mestrado', 'doutorado', 'academico', 'orientador', 'evasao', 'permanencia'],
   ['acolhimento', 'psicoterapia', 'terapia', 'escuta', 'rogers', 'tcc', 'mindfulness', 'autocompaixao', 'psicoeducacao'],
   ['sigilo', 'etica', 'cfp', 'coordenacao', 'professor', 'familia', 'andifes', 'mec', 'sus', 'raps'],
-  ['suicidio', 'autolesao', 'crise', 'risco', 'desistir', 'desespero', 'cvv', 'caps', 'emergencia', 'protecao'],
+  ['suicidio', 'autolesao', 'crise', 'risco', 'desistir', 'desespero', 'cvv', 'caps', 'emergencia', 'protecao', 'posvencao', 'gaes'],
   ['cotista', 'racismo', 'lgbtqia', 'deficiencia', 'indigena', 'quilombola', 'interseccionalidade', 'pertencimento', 'geracao'],
+  // Grupos específicos do Portal Saúde Mental UFMG (isolados por unidade/tema para evitar ruído cruzado)
+  ['icex', 'espacamente'],
+  ['fafich', 'nad', 'spa'],
+  ['letras', 'fale', 'sael'],
+  ['engenharia', 'naaeng'],
+  ['medicina', 'cegrad', 'napem', 'gaes', 'fonoaudiologia', 'radiologia'],
+  ['farmacia', 'fafar'],
+  ['coltec', 'seap'],
+  ['ica', 'montes', 'claros'],
+  ['face', 'eiface'],
+  ['direito', 'caap', 'territorio'],
+  ['fae', 'mandala'],
+  ['dast', 'pampulha', 'ambulancia', 'telemedicina', 'sast'],
+  ['fump', 'assistencia', 'psicoterapia'],
+  ['nai', 'mudi', 'acessibilidade', 'inclusao', 'libras', 'transporte', 'acessivel', 'psicossocial', 'lbi'],
+  ['ccn', 'nuh', 'colar', 'diversidade', 'minorias', 'aquilombamento', 'negra', 'lgbt'],
+  ['cersam', 'caps', 'raps', 'upa', 'samu', 'bombeiros', 'ubs', 'sus'],
+  ['cpsm', 'cisme', 'politica', 'diretrizes', 'principios', 'antimanicomial', 'basaglia', 'enasam', 'renasam', 'cartilha'],
+  ['convivencia', 'bosques', 'estacao', 'ecologica', 'ilhas', 'conforto', 'domino', 'praca'],
+  ['assedio', 'moral', 'sexual', 'ouvidoria', 'denuncia', 'paz', 'unesco'],
+  ['servidores', 'docentes', 'taes', 'trabalho', 'daf', 'afastamento', 'porta'],
+  ['familia', 'amigos', 'familiar', 'leida', 'asussam', 'intoxicacao', 'agitacao'],
+  ['mito', 'mitos', 'fatos', 'felicidade', 'preguica', 'periculosidade', 'alcool', 'binge'],
+  ['depressao', 'psicose', 'esquizofrenia', 'loucura', 'delirios', 'alucinacoes', 'filmes', 'documentarios'],
 ];
 
 function expandQueryTerms(terms: string[]): string[] {
   const expanded = new Set<string>(terms);
   for (const t of terms) {
     for (const group of SEMANTIC_SYNONYM_GROUPS) {
-      if (group.some((g) => g.includes(t) || t.includes(g))) {
+      if (group.some((g) => g === t || (t.length >= 4 && (g.includes(t) || t.includes(g))))) {
         for (const syn of group) expanded.add(syn);
       }
     }
@@ -136,7 +160,7 @@ function expandQueryTerms(terms: string[]): string[] {
   return Array.from(expanded);
 }
 
-// Busca Semântica + Léxica (BM25 + Expansão de Sinônimos de Domínio) na Base de Conhecimento do Avatar
+// Busca Semântica + Léxica (IDF + Exact-Token + Expansão de Sinônimos de Domínio) na Base de Conhecimento do Avatar
 export function searchKnowledgeBase(
   query: string,
   avatarId: string,
@@ -151,56 +175,110 @@ export function searchKnowledgeBase(
   if (rawTerms.length === 0) return [];
   const expandedTerms = expandQueryTerms(rawTerms);
 
-  const results: RagCitation[] = [];
-
-  for (const doc of avatarDocs) {
-    for (const chunk of doc.chunks) {
-      const chunkNorm = normalizeText(chunk.text);
-      const titleNorm = normalizeText(doc.title);
+  // Prepara corpus de chunks do avatar e calcula frequência documental (DF/IDF)
+  const corpus = avatarDocs.flatMap((doc) => {
+    const titleTerms = new Set(extractTerms(doc.title));
+    return doc.chunks.map((chunk) => {
       const chunkTerms = extractTerms(chunk.text);
+      const chunkTermSet = new Set(chunkTerms);
+      const headingTerms = new Set(extractTerms(chunk.text.split('\n')[0] || ''));
+      return { doc, chunk, titleTerms, chunkTerms, chunkTermSet, headingTerms };
+    });
+  });
 
-      let matchedTerms = 0;
-      let exactSubstringBoost = 0;
+  const totalChunks = Math.max(1, corpus.length);
+  const termDf = new Map<string, number>();
 
-      for (const qTerm of rawTerms) {
-        if (chunkNorm.includes(qTerm)) {
-          matchedTerms += 1.4;
-        } else if (
-          chunkTerms.some(
-            (ct) =>
-              ct.startsWith(qTerm.slice(0, Math.max(4, qTerm.length - 2))) ||
-              qTerm.startsWith(ct.slice(0, Math.max(4, ct.length - 2)))
-          )
-        ) {
-          matchedTerms += 0.95;
-        }
-        if (titleNorm.includes(qTerm)) {
-          exactSubstringBoost += 0.35;
-        }
+  const matchesTermInSet = (term: string, termSet: Set<string>, termList: string[]): 'exact' | 'stem' | 'none' => {
+    if (termSet.has(term)) return 'exact';
+    if (term.length >= 5) {
+      const stem = term.slice(0, term.length - 2);
+      if (
+        termList.some(
+          (ct) => ct.length >= 5 && (ct.startsWith(stem) || term.startsWith(ct.slice(0, ct.length - 2)))
+        )
+      ) {
+        return 'stem';
+      }
+    }
+    return 'none';
+  };
+
+  for (const term of expandedTerms) {
+    let df = 0;
+    for (const item of corpus) {
+      if (matchesTermInSet(term, item.chunkTermSet, item.chunkTerms) !== 'none') {
+        df++;
+      }
+    }
+    termDf.set(term, df);
+  }
+
+  const getIdf = (term: string): number => {
+    const df = termDf.get(term) ?? 0;
+    return Math.log(1 + (totalChunks + 1) / (df + 1));
+  };
+
+  const maxPossibleDirect = rawTerms.reduce((acc, t) => acc + getIdf(t) * 2.0, 0) || 1;
+  const scoredResults: Array<{ citation: RagCitation; rankScore: number }> = [];
+
+  for (const item of corpus) {
+    const { doc, chunk, titleTerms, chunkTerms, chunkTermSet, headingTerms } = item;
+
+    let directWeight = 0;
+    let headingBoost = 0;
+    let matchedRawCount = 0;
+
+    for (const qTerm of rawTerms) {
+      const idf = getIdf(qTerm);
+      const matchKind = matchesTermInSet(qTerm, chunkTermSet, chunkTerms);
+      if (matchKind === 'exact') {
+        directWeight += idf * 2.0;
+        matchedRawCount += 1;
+      } else if (matchKind === 'stem') {
+        directWeight += idf * 1.15;
+        matchedRawCount += 0.7;
       }
 
-      for (const synTerm of expandedTerms) {
-        if (!rawTerms.includes(synTerm) && chunkNorm.includes(synTerm)) {
-          matchedTerms += 0.45;
+      if (headingTerms.has(qTerm)) {
+        headingBoost += idf * 1.25;
+      } else if (titleTerms.has(qTerm)) {
+        headingBoost += idf * 0.25;
+      }
+    }
+
+    let synWeight = 0;
+    for (const synTerm of expandedTerms) {
+      if (!rawTerms.includes(synTerm)) {
+        const synKind = matchesTermInSet(synTerm, chunkTermSet, chunkTerms);
+        if (synKind === 'exact') {
+          synWeight += getIdf(synTerm) * 0.45;
         }
       }
+    }
+    const cappedSynWeight = Math.min(maxPossibleDirect * 0.35, synWeight);
 
-      const coverage = matchedTerms / Math.max(1, rawTerms.length);
-      const rawScore = Math.min(0.99, coverage * 0.68 + exactSubstringBoost);
+    const rankScore = directWeight + headingBoost + cappedSynWeight;
+    const normalizedScore = Math.min(0.99, (directWeight + cappedSynWeight * 0.8 + headingBoost * 0.5) / maxPossibleDirect);
 
-      if (matchedTerms >= 0.9 && rawScore >= 0.28) {
-        results.push({
+    if ((matchedRawCount >= 0.7 || cappedSynWeight > 0.65) && normalizedScore >= 0.22) {
+      scoredResults.push({
+        rankScore,
+        citation: {
           chunkId: chunk.id,
           docId: doc.id,
           docTitle: doc.title,
           excerpt: chunk.text,
-          score: Number(rawScore.toFixed(2)),
-        });
-      }
+          score: Number(normalizedScore.toFixed(2)),
+        },
+      });
     }
   }
 
-  return results.sort((a, b) => b.score - a.score).slice(0, topK);
+  return scoredResults
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, topK)
+    .map((entry) => entry.citation);
 }
 
 // Compilador do Prompt Harness (Nível 1 Preventivo) no estilo Gemini Live / GPT Live Voice Mode
@@ -230,18 +308,38 @@ export function compileSystemInstruction(
       ? 'acolhedor, empático e humano'
       : 'objetivo, claro e prestativo';
 
-  const knowledgeMemoryBlock =
-    avatarDocs.length > 0
-      ? `\n\n=== SUA MEMÓRIA E EXPERIÊNCIA DE DOMÍNIO (USE COMO CONHECIMENTO PRÓPRIO) ===\n` +
-        avatarDocs
-          .map((d) => `[Tópico: ${d.title}]\n${d.content}`)
-          .join('\n\n')
-      : '';
+  const directDocs = avatarDocs.filter((d) => d.injectionMode === 'direct_context');
+  const vectorDocs = avatarDocs.filter((d) => d.injectionMode !== 'direct_context');
+  const totalVectorChars = vectorDocs.reduce((acc, d) => acc + d.content.length, 0);
+
+  // Para bases compactas (<= 8500 chars), injeta tudo na memória direta;
+  // Para bases extensas (como o Portal Saúde Mental UFMG completo), injeta direct_context + índice + chunks RAG recuperados.
+  let knowledgeMemoryBlock = '';
+  if (avatarDocs.length > 0) {
+    if (totalVectorChars <= 8500) {
+      knowledgeMemoryBlock =
+        `\n\n=== SUA MEMÓRIA E EXPERIÊNCIA DE DOMÍNIO (USE COMO CONHECIMENTO PRÓPRIO) ===\n` +
+        avatarDocs.map((d) => `[Tópico: ${d.title}]\n${d.content}`).join('\n\n');
+    } else {
+      const directSection =
+        directDocs.length > 0
+          ? directDocs.map((d) => `[Referência Prioritária: ${d.title}]\n${d.content}`).join('\n\n')
+          : '';
+      const indexSection =
+        vectorDocs.length > 0
+          ? `[Acervo Completo Indexado no RAG (${vectorDocs.length} documentos)]\n` +
+            vectorDocs.map((d) => `- ${d.title}`).join('\n')
+          : '';
+      knowledgeMemoryBlock =
+        `\n\n=== SUA MEMÓRIA E EXPERIÊNCIA DE DOMÍNIO (USE COMO CONHECIMENTO PRÓPRIO) ===\n` +
+        [directSection, indexSection].filter(Boolean).join('\n\n');
+    }
+  }
 
   const priorityRagBlock =
     activeCitations.length > 0
       ? `\n\n=== CONTEXTO MAIS RELEVANTE PARA A PERGUNTA ATUAL ===\n` +
-        activeCitations.map((c) => c.excerpt).join('\n\n')
+        activeCitations.map((c) => `[${c.docTitle}]\n${c.excerpt}`).join('\n\n')
       : '';
 
   const languageRule = isClinicalSupportPersona
@@ -427,8 +525,23 @@ export function evaluateRealtimeGuardrails(
       piiTypes.push('Cartão');
     }
     if (EMAIL_SECRET_REGEX.test(sanitized)) {
-      sanitized = sanitized.replace(EMAIL_SECRET_REGEX, '[EMAIL ANONIMIZADO]');
-      piiTypes.push('E-mail');
+      EMAIL_SECRET_REGEX.lastIndex = 0;
+      const isPublicInstitutionalEmail = (email: string) =>
+        direction === 'avatar_output' &&
+        /(@(?:[\w-]+\.)?(?:ufmg\.br|gov\.br|caap\.org\.br)$|^(?:acolhimentodast|projetoescutaufmg|gaesufmg)@gmail\.com$)/i.test(
+          email.trim()
+        );
+      let maskedAnyEmail = false;
+      sanitized = sanitized.replace(EMAIL_SECRET_REGEX, (match) => {
+        if (isPublicInstitutionalEmail(match)) {
+          return match;
+        }
+        maskedAnyEmail = true;
+        return '[EMAIL ANONIMIZADO]';
+      });
+      if (maskedAnyEmail) {
+        piiTypes.push('E-mail');
+      }
     }
   }
 
@@ -561,8 +674,10 @@ export function inferEmotionAndGesture(
 function splitSentencesSafe(text: string): string[] {
   const placeholder = '\u0000';
   const protectedText = text
-    .replace(/\b(Dra|Dr|Sr|Sra|Art|Inc|Ltda|Prof|Profa|Res|Port|nº|n°|cf|ex|etc)\./gi, `$1${placeholder}`)
-    .replace(/(\d)\.(\d)/g, `$1${placeholder}$2`);
+    .replace(/\b(Dra|Dr|Sr|Sra|Art|Inc|Ltda|Prof|Profa|Res|Port|Av|Al|Tel|Tels|Obs|Cap|nº|n°|cf|ex|etc)\./gi, `$1${placeholder}`)
+    // Protege pontos internos sem espaço seguinte (e-mails, domínios, URLs, números como 13.146 ou 10.216)
+    .replace(/([A-Za-z0-9_-])\.([A-Za-z0-9_-])/g, `$1${placeholder}$2`)
+    .replace(/([A-Za-z0-9_-])\.([A-Za-z0-9_-])/g, `$1${placeholder}$2`);
 
   const rawParts = protectedText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [protectedText];
   return rawParts
@@ -652,8 +767,8 @@ function extractConciseFactFromChunk(chunkText: string, query: string, maxSenten
     for (const term of qTerms) {
       if (sNorm.includes(term)) score += 2;
     }
-    if (score > 0 && /\d+%|\d+\s*(?:ms|minutos|anos|khz)/i.test(sentence)) {
-      score += 0.8;
+    if (score > 0 && /\d+%|\d+\s*(?:ms|minutos|anos|khz)|\d{4}-\d{4}|@[\w.-]+/i.test(sentence)) {
+      score += 0.95;
     }
     return { sentence, score, idx };
   });
@@ -813,7 +928,7 @@ export function synthesizeGroundedResponse(
 
   const cleanQuery = inputCheck.sanitizedText;
   const maxSent = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 3));
-  const citations = searchKnowledgeBase(cleanQuery, avatar.id, documents, 2);
+  const citations = searchKnowledgeBase(cleanQuery, avatar.id, documents, 3);
 
   let prefixPII = '';
   if (inputCheck.action === 'masked_pii') {

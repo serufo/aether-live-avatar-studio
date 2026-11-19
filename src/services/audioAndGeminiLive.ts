@@ -1036,7 +1036,7 @@ export class GeminiLiveSessionManager {
       };
     }
 
-    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 3);
+    const citations = searchKnowledgeBase(inputGuard.sanitizedText, avatar.id, documents, 5);
     const maxSentences = Math.max(2, Math.min(avatar.guardrails.maxResponseSentences || 3, 4));
     const systemInstruction = compileSystemInstruction(avatar, documents, citations);
 
