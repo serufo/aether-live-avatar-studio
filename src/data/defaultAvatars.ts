@@ -146,7 +146,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Aoede',
       temperature: 0.55,
       vadSensitivity: 0.78,
@@ -262,7 +262,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Fenrir',
       temperature: 0.48,
       vadSensitivity: 0.78,
@@ -376,7 +376,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Kore',
       temperature: 0.5,
       vadSensitivity: 0.78,
@@ -490,7 +490,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Charon',
       temperature: 0.45,
       vadSensitivity: 0.78,
@@ -590,7 +590,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Aoede',
       temperature: 0.55,
       vadSensitivity: 0.75,
@@ -689,7 +689,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Kore',
       temperature: 0.4,
       vadSensitivity: 0.8,
@@ -787,7 +787,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Puck',
       temperature: 0.55,
       vadSensitivity: 0.78,
@@ -884,7 +884,7 @@ export const DEFAULT_AVATARS: AvatarProfile[] = [
       logAllTurns: true,
     },
     geminiConfig: {
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
       voiceName: 'Charon',
       temperature: 0.45,
       vadSensitivity: 0.75,

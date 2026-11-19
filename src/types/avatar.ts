@@ -105,7 +105,11 @@ export interface GuardrailsConfig {
 }
 
 export interface GeminiLiveConfig {
-  model: 'gemini-2.0-flash-exp' | 'gemini-2.5-flash-preview-native-audio-dialog';
+  model:
+    | 'gemini-2.5-flash-native-audio-preview-12-2025'
+    | 'gemini-2.5-flash-native-audio-preview-09-2025'
+    | 'gemini-2.5-flash-preview-native-audio-dialog'
+    | 'gemini-2.0-flash-exp';
   voiceName: 'Aoede' | 'Puck' | 'Charon' | 'Kore' | 'Fenrir';
   temperature: number;
   vadSensitivity: number;

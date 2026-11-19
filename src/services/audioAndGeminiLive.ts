@@ -70,6 +70,137 @@ export const VOICE_PERSONA_SPECS: Record<VoicePersonaName, VoiceProfileSpec> = {
   },
 };
 
+/**
+ * Normaliza o texto APENAS para a camada de síntese de voz (sem alterar legenda/histórico),
+ * eliminando pausas artificiais causadas por pontos em abreviações como "Dr. Eduardo",
+ * "Dra. Beatriz", "Prof.", "Sr.", "Av.", unidades clínicas e horários.
+ */
+export function normalizeTextForSpeech(text: string): string {
+  let s = text
+    .replace(/[*#`_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!s) return '';
+
+  // Expande títulos e abreviações com ponto para pronúncia contínua e natural em pt-BR
+  const replacements: Array<[RegExp, string]> = [
+    [/\bDrs\.\s+/g, 'Doutores '],
+    [/\bDras\.\s+/g, 'Doutoras '],
+    [/\bDr\.\s+/g, 'Doutor '],
+    [/\bDra\.\s+/g, 'Doutora '],
+    [/\bProfs\.\s+/g, 'Professores '],
+    [/\bProfas\.\s+/g, 'Professoras '],
+    [/\bProf\.\s+/g, 'Professor '],
+    [/\bProfa\.\s+/g, 'Professora '],
+    [/\bSrta\.\s+/g, 'Senhorita '],
+    [/\bSra\.\s+/g, 'Senhora '],
+    [/\bSr\.\s+/g, 'Senhor '],
+    [/\bAv\.\s+/g, 'Avenida '],
+    [/\bAl\.\s+/g, 'Alameda '],
+    [/\bR\.\s+(?=[A-ZÀ-Ý])/g, 'Rua '],
+    [/\bArt\.\s*/g, 'Artigo '],
+    [/\bCap\.\s*/g, 'Capítulo '],
+    [/\bTel\.?:?\s*/gi, 'telefone '],
+    [/\bCel\.?:?\s*/gi, 'celular '],
+    [/\bN[º°o]\.\s*/g, 'número '],
+    [/\bObs\.:\s*/gi, 'Observação: '],
+    [/\bEx\.:\s*/gi, 'por exemplo, '],
+    [/\bEx\.\s+/g, 'por exemplo, '],
+    [/\betc\.(?=\s+[a-zà-ÿ])/gi, 'etcétera '],
+    [/\bmin\.\s*/gi, 'minutos '],
+    [/\bseg\.\s*/gi, 'segundos '],
+    // Unidades clínicas e horários frequentes
+    [/(\d+(?:[.,]\d+)?)\s*mL\/min\/1[.,]73\s*m[²2]/gi, '$1 mililitros por minuto'],
+    [/(\d+(?:[.,]\d+)?)\s*mg\/dL\b/gi, '$1 miligramas por decilitro'],
+    [/(\d+(?:[.,]\d+)?)\s*mg\b/gi, '$1 miligramas'],
+    [/(\d+(?:[.,]\d+)?)\s*mL\b/gi, '$1 mililitros'],
+    [/\b(\d{1,2})h(\d{2})\b/g, '$1 horas e $2'],
+    [/\b(\d{1,2})h\b/g, '$1 horas'],
+    // Evita pausa brusca em travessões isolados
+    [/\s+[—–]\s+/g, ', '],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    s = s.replace(pattern, replacement);
+  }
+
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Divide texto longo em blocos naturais de fala sem NUNCA quebrar em abreviações,
+ * decimais, e-mails ou URLs. Para falas curtas/médias (<= maxChunkChars), mantém
+ * tudo em um único bloco contínuo para evitar pausas mecânicas entre frases.
+ */
+export function splitTextIntoSpeechChunks(
+  spokenText: string,
+  maxChunkChars = 220
+): string[] {
+  const clean = spokenText.replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  if (clean.length <= maxChunkChars) return [clean];
+
+  const DOT = '\u0000';
+  const protectedText = clean
+    // Protege decimais (ex: 1.73, 99.9)
+    .replace(/(\d)\.(\d)/g, `$1${DOT}$2`)
+    // Protege e-mails e domínios/URLs (ex: acolhimento@eng.ufmg.br, ufmg.br/saudemental)
+    .replace(/([a-z0-9@_-])\.([a-z0-9_-])/gi, `$1${DOT}$2`)
+    // Protege eventuais abreviações residuais com ponto
+    .replace(
+      /\b(Dr|Dra|Prof|Profa|Sr|Sra|Srta|Av|Al|Art|Cap|Tel|Cel|Obs|Ex|etc)\./gi,
+      `$1${DOT}`
+    );
+
+  const rawSentences = protectedText
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.replace(new RegExp(DOT, 'g'), '.').trim())
+    .filter((part) => part.length > 0);
+
+  if (rawSentences.length <= 1) return [clean];
+
+  // Agrupa frases adjacentes em blocos naturais de até maxChunkChars
+  const chunks: string[] = [];
+  let current = '';
+  for (const sentence of rawSentences) {
+    if (!current) {
+      current = sentence;
+    } else if (current.length + 1 + sentence.length <= maxChunkChars) {
+      current = `${current} ${sentence}`;
+    } else {
+      chunks.push(current);
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function concatBase64PcmChunks(chunks: string[]): string | null {
+  if (chunks.length === 0) return null;
+  if (chunks.length === 1) return chunks[0];
+  try {
+    const decoded = chunks.map((b64) => atob(b64));
+    const totalLen = decoded.reduce((acc, s) => acc + s.length, 0);
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const bin of decoded) {
+      for (let i = 0; i < bin.length; i++) {
+        merged[offset++] = bin.charCodeAt(i);
+      }
+    }
+    let out = '';
+    const sliceSize = 0x8000;
+    for (let i = 0; i < merged.length; i += sliceSize) {
+      out += String.fromCharCode(...merged.subarray(i, i + sliceSize));
+    }
+    return btoa(out);
+  } catch {
+    return null;
+  }
+}
+
 export class RealtimeAudioVisemeEngine {
   private audioCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -95,6 +226,7 @@ export class RealtimeAudioVisemeEngine {
   private cachedVoices: SpeechSynthesisVoice[] = [];
   private activeAbortController: AbortController | null = null;
   private pcmAudioCache: Map<string, string> = new Map();
+  private streamDrainCallback: (() => void) | null = null;
 
   constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -115,6 +247,25 @@ export class RealtimeAudioVisemeEngine {
 
   public setApiKey(key: string) {
     this.apiKey = key.trim();
+  }
+
+  public isMuted(): boolean {
+    return this.muted;
+  }
+
+  public cachePcmAudio(text: string, persona: VoicePersonaName, base64Pcm: string) {
+    const clean = text.replace(/[*#`_~]/g, '').trim();
+    const spoken = normalizeTextForSpeech(clean);
+    if (spoken) {
+      this.pcmAudioCache.set(`${persona}::${spoken}`, base64Pcm);
+    }
+    if (clean && clean !== spoken) {
+      this.pcmAudioCache.set(`${persona}::${clean}`, base64Pcm);
+    }
+  }
+
+  public setStreamDrainCallback(cb: (() => void) | null) {
+    this.streamDrainCallback = cb;
   }
 
   public getLastSelectedVoiceLabel(): string {
@@ -348,19 +499,27 @@ export class RealtimeAudioVisemeEngine {
         this.isSpeaking = false;
         this.hasActivePcmStream = false;
         onEndedCallback?.();
+        if (this.streamDrainCallback) {
+          const drain = this.streamDrainCallback;
+          this.streamDrainCallback = null;
+          drain();
+        }
       }
     };
   }
 
-  // Sintetiza áudio neural 24kHz PCM direto pela API de TTS do Gemini com CACHE em memória
+  // Sintetiza áudio neural 24kHz PCM direto pela API de TTS conversacional do Gemini com CACHE em memória
   // (Ao clicar no histórico para ouvir novamente, reproduz exatamente o mesmo áudio instantaneamente sem gastar cota!)
   private async trySynthesizeGeminiNativeAudio(
-    cleanText: string,
+    spokenText: string,
     persona: VoicePersonaName,
-    signal: AbortSignal
+    signal: AbortSignal,
+    rawCacheKeyText?: string
   ): Promise<string | null> {
-    const cacheKey = `${persona}::${cleanText}`;
-    const cachedPcm = this.pcmAudioCache.get(cacheKey);
+    const cacheKey = `${persona}::${spokenText}`;
+    const cachedPcm =
+      this.pcmAudioCache.get(cacheKey) ||
+      (rawCacheKeyText ? this.pcmAudioCache.get(`${persona}::${rawCacheKeyText}`) : undefined);
     if (cachedPcm) {
       return cachedPcm;
     }
@@ -369,16 +528,20 @@ export class RealtimeAudioVisemeEngine {
 
     const ttsModels = [
       'gemini-2.5-flash-preview-tts',
+      'gemini-3.1-flash-tts-preview',
       'gemini-2.5-pro-preview-tts',
       'gemini-2.5-flash-preview-tts',
     ];
 
+    // Direção natural de prosódia conversacional suportada nativamente pelo Gemini TTS
+    const styledPrompt = `Fale em português brasileiro de forma natural, fluida, calorosa e contínua, como em um diálogo ao vivo sem pausas artificiais: ${spokenText}`;
+
     for (let attempt = 0; attempt < ttsModels.length; attempt++) {
       const model = ttsModels[attempt];
       try {
-        if (attempt === 2) {
+        if (attempt === ttsModels.length - 1) {
           // Pequena pausa caso tenha ocorrido rate-limit (429) nos cliques rápidos
-          await new Promise((r) => setTimeout(r, 750));
+          await new Promise((r) => setTimeout(r, 700));
           if (signal.aborted) return null;
         }
 
@@ -391,7 +554,7 @@ export class RealtimeAudioVisemeEngine {
             headers: { 'Content-Type': 'application/json' },
             signal,
             body: JSON.stringify({
-              contents: [{ parts: [{ text: cleanText }] }],
+              contents: [{ parts: [{ text: styledPrompt }] }],
               generationConfig: {
                 responseModalities: ['AUDIO'],
                 speechConfig: {
@@ -413,6 +576,9 @@ export class RealtimeAudioVisemeEngine {
             if (part?.inlineData?.data && part?.inlineData?.mimeType?.includes('audio')) {
               const pcmBase64 = String(part.inlineData.data);
               this.pcmAudioCache.set(cacheKey, pcmBase64);
+              if (rawCacheKeyText && rawCacheKeyText !== spokenText) {
+                this.pcmAudioCache.set(`${persona}::${rawCacheKeyText}`, pcmBase64);
+              }
               return pcmBase64;
             }
           }
@@ -436,7 +602,8 @@ export class RealtimeAudioVisemeEngine {
     this.interrupt();
 
     const cleanText = text.replace(/[*#`_~]/g, '').trim();
-    if (!cleanText) {
+    const spokenText = normalizeTextForSpeech(cleanText);
+    if (!spokenText) {
       onAudioStart?.();
       onComplete?.();
       return;
@@ -444,29 +611,34 @@ export class RealtimeAudioVisemeEngine {
 
     const persona = (voiceName in VOICE_PERSONA_SPECS ? voiceName : 'Aoede') as VoicePersonaName;
     this.currentVoiceName = persona;
-    this.currentPhonemeText = cleanText;
+    this.currentPhonemeText = spokenText;
     this.boundaryCharIndex = -1;
 
     const spec = VOICE_PERSONA_SPECS[persona];
     this.speechDurationMs = Math.max(
       1400,
-      Math.min(18000, ((cleanText.length / 14.2) * 1000) / spec.rate)
+      Math.min(18000, ((spokenText.length / 14.2) * 1000) / spec.rate)
     );
 
     // IMPORTANTE: Mantém isSpeaking = false enquanto o áudio está sendo sintetizado na rede,
     // para que o avatar NÃO mexa a boca antes de o som começar a sair!
     this.isSpeaking = false;
 
+    const hasCachedPcm =
+      this.pcmAudioCache.has(`${persona}::${spokenText}`) ||
+      this.pcmAudioCache.has(`${persona}::${cleanText}`);
+
     // 1. Se já estiver em cache ou houver GEMINI_API_KEY configurada, usa o áudio neural nativo 24kHz do Gemini (Aoede/Kore/Puck/Charon/Fenrir)
-    if ((this.apiKey || this.pcmAudioCache.has(`${persona}::${cleanText}`)) && !this.muted) {
+    if ((this.apiKey || hasCachedPcm) && !this.muted) {
       const abortCtrl = new AbortController();
       this.activeAbortController = abortCtrl;
       this.lastSelectedVoiceLabel = `Gemini Neural 24kHz (${persona})`;
 
       const pcmBase64 = await this.trySynthesizeGeminiNativeAudio(
-        cleanText,
+        spokenText,
         persona,
-        abortCtrl.signal
+        abortCtrl.signal,
+        cleanText
       );
 
       if (abortCtrl.signal.aborted) return;
@@ -553,12 +725,9 @@ export class RealtimeAudioVisemeEngine {
         const selected = this.selectVoiceForPersona(persona);
         this.lastSelectedVoiceLabel = selected.resolvedLabel;
 
-        const sentences = cleanText
-          .split(/(?<=[.!?])\s+/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-
-        const chunksToSpeak = sentences.length > 0 ? sentences : [cleanText];
+        // Usa divisor inteligente sem quebra em abreviações (Dr., Dra., Prof., etc.)
+        // e mantém falas curtas/médias em 1 bloco contínuo sem pausas artificiais
+        const chunksToSpeak = splitTextIntoSpeechChunks(spokenText, 220);
         let charOffset = 0;
 
         if (onAutoplayBlocked) {
@@ -640,6 +809,7 @@ export class RealtimeAudioVisemeEngine {
     this.currentPhonemeText = '';
     this.boundaryCharIndex = -1;
     this.nextPlaybackTime = 0;
+    this.streamDrainCallback = null;
 
     if (this.activeAbortController) {
       this.activeAbortController.abort();
@@ -841,10 +1011,47 @@ export class RealtimeAudioVisemeEngine {
   }
 }
 
+interface PendingLiveTurn {
+  avatar: AvatarProfile;
+  audioEngine: RealtimeAudioVisemeEngine;
+  citations: RagCitation[];
+  maxSentences: number;
+  t0: number;
+  transcript: string;
+  fallbackText: string;
+  pcmChunks: string[];
+  hasReceivedAudio: boolean;
+  wasBlocked: boolean;
+  blockedReply: string;
+  onAudioStart?: () => void;
+  onAudioComplete?: () => void;
+  firstChunkTimer: ReturnType<typeof setTimeout>;
+  totalTimer: ReturnType<typeof setTimeout>;
+  resolve: (
+    result: {
+      replyText: string;
+      citations: RagCitation[];
+      emotion: EmotionState;
+      gesture: GestureState;
+      wasBlocked: boolean;
+      latencyMs: number;
+      modeUsed: 'gemini_live_ws';
+      audioAlreadyPlayed: boolean;
+    } | null
+  ) => void;
+}
+
+const DEFAULT_LIVE_DIALOG_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const FALLBACK_LIVE_DIALOG_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
+
 export class GeminiLiveSessionManager {
   private ws: WebSocket | null = null;
   private isConnected = false;
+  private setupComplete = false;
   private apiKey = '';
+  private activeLiveModel = DEFAULT_LIVE_DIALOG_MODEL;
+  private pendingLiveTurn: PendingLiveTurn | null = null;
+  private connectionAttemptId = 0;
 
   public setApiKey(key: string) {
     this.apiKey = key.trim();
@@ -854,13 +1061,32 @@ export class GeminiLiveSessionManager {
     return this.apiKey;
   }
 
+  public getActiveLiveModel(): string {
+    return this.activeLiveModel;
+  }
+
   public isLiveWsConnected(): boolean {
-    return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
+    return this.isConnected && this.setupComplete && this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  private abortPendingLiveTurn(reasonValue: null = null) {
+    const pending = this.pendingLiveTurn;
+    if (!pending) return;
+    this.pendingLiveTurn = null;
+    clearTimeout(pending.firstChunkTimer);
+    clearTimeout(pending.totalTimer);
+    pending.resolve(reasonValue);
   }
 
   public disconnect() {
+    this.connectionAttemptId++;
+    this.abortPendingLiveTurn(null);
     if (this.ws) {
       try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
         this.ws.close();
       } catch {
         // Ignore
@@ -868,6 +1094,16 @@ export class GeminiLiveSessionManager {
       this.ws = null;
     }
     this.isConnected = false;
+    this.setupComplete = false;
+  }
+
+  private getCandidateLiveModels(configuredModel: string): string[] {
+    const primary =
+      !configuredModel || configuredModel === 'gemini-2.0-flash-exp'
+        ? DEFAULT_LIVE_DIALOG_MODEL
+        : configuredModel;
+    const list = [primary, DEFAULT_LIVE_DIALOG_MODEL, FALLBACK_LIVE_DIALOG_MODEL];
+    return Array.from(new Set(list));
   }
 
   public connectLiveWebSocket(
@@ -895,25 +1131,72 @@ export class GeminiLiveSessionManager {
       return;
     }
 
-    callbacks.onStatusChange('connecting', 'Conectando ao WebSocket Gemini Multimodal Live API...');
+    const candidates = this.getCandidateLiveModels(avatar.geminiConfig.model);
+    const attemptToken = ++this.connectionAttemptId;
+    this.openLiveSocketCandidate(candidates, 0, attemptToken, avatar, documents, audioEngine, callbacks);
+  }
 
-    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(
+  private openLiveSocketCandidate(
+    candidates: string[],
+    candidateIndex: number,
+    attemptToken: number,
+    avatar: AvatarProfile,
+    documents: KnowledgeDocument[],
+    audioEngine: RealtimeAudioVisemeEngine,
+    callbacks: {
+      onStatusChange: (
+        status: 'connecting' | 'connected' | 'fallback_ready' | 'error',
+        detail: string
+      ) => void;
+      onModelTurnComplete: (text: string, citations: RagCitation[]) => void;
+      onGuardrailCut: (reason: string, fallbackText: string) => void;
+    }
+  ) {
+    if (attemptToken !== this.connectionAttemptId) return;
+
+    const modelId = candidates[candidateIndex];
+    if (!modelId) {
+      callbacks.onStatusChange(
+        'fallback_ready',
+        `Gemini Neural TTS 24kHz Ativo (Voz ${avatar.geminiConfig.voiceName})`
+      );
+      return;
+    }
+
+    this.activeLiveModel = modelId;
+    this.isConnected = false;
+    this.setupComplete = false;
+
+    callbacks.onStatusChange(
+      'connecting',
+      `Conectando ao Gemini Live Native Audio (${modelId})...`
+    );
+
+    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(
       this.apiKey
     )}`;
 
     try {
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
-      let accumulatedText = '';
-      let activeCitations: RagCitation[] = [];
+      let didReachSetupComplete = false;
 
       ws.onopen = () => {
+        if (attemptToken !== this.connectionAttemptId) {
+          try {
+            ws.close();
+          } catch {
+            // Ignore
+          }
+          return;
+        }
         this.isConnected = true;
-        const systemPrompt = compileSystemInstruction(avatar, documents);
+        const baseSystemPrompt = compileSystemInstruction(avatar, documents);
+        const liveSpeechStylePrompt = `${baseSystemPrompt}\n\n=== PROSÓDIA DE DIÁLOGO AO VIVO (ÁUDIO NATIVO) ===\nFale em português brasileiro de forma natural, calorosa, fluida e contínua, como em uma conversa humana ao vivo. Pronuncie títulos por extenso ("Doutor", "Doutora", "Professor") sem pausas artificiais e jamais leia marcações, instruções ou colchetes em voz alta.`;
 
         const setupPayload = {
           setup: {
-            model: `models/${avatar.geminiConfig.model}`,
+            model: `models/${modelId}`,
             generationConfig: {
               responseModalities: ['AUDIO'],
               temperature: avatar.geminiConfig.temperature,
@@ -925,108 +1208,89 @@ export class GeminiLiveSessionManager {
                 },
               },
             },
+            outputAudioTranscription: {},
             systemInstruction: {
-              parts: [{ text: systemPrompt }],
+              parts: [{ text: liveSpeechStylePrompt }],
             },
-            tools: avatar.geminiConfig.enableFunctionCallingRAG
-              ? [
-                  {
-                    functionDeclarations: [
-                      {
-                        name: 'search_knowledge_base',
-                        description:
-                          'Busca trechos relevantes nos documentos enviados pelo administrador para a base de conhecimento do avatar.',
-                        parameters: {
-                          type: 'OBJECT',
-                          properties: {
-                            query: {
-                              type: 'STRING',
-                              description: 'Consulta semântica para buscar nos documentos do avatar',
-                            },
-                          },
-                          required: ['query'],
-                        },
-                      },
-                    ],
-                  },
-                ]
-              : undefined,
           },
         };
 
         ws.send(JSON.stringify(setupPayload));
-        callbacks.onStatusChange(
-          'connected',
-          `Gemini Live 24kHz Ativo (${avatar.geminiConfig.model} • Voz ${avatar.geminiConfig.voiceName})`
-        );
       };
 
       ws.onmessage = async (event) => {
+        if (attemptToken !== this.connectionAttemptId) return;
         try {
           const rawText =
             event.data instanceof Blob ? await event.data.text() : String(event.data);
           const msg = JSON.parse(rawText);
 
-          if (msg.toolCall?.functionCalls) {
-            for (const fnCall of msg.toolCall.functionCalls) {
-              if (fnCall.name === 'search_knowledge_base') {
-                const q = String(fnCall.args?.query || '');
-                const found = searchKnowledgeBase(q, avatar.id, documents, 2);
-                activeCitations = found;
-                const toolResp = {
-                  toolResponse: {
-                    functionResponses: [
-                      {
-                        id: fnCall.id,
-                        name: 'search_knowledge_base',
-                        response: {
-                          result:
-                            found.length > 0
-                              ? found.map((c) => c.excerpt).join('\n\n')
-                              : 'Informação não consta no contexto.',
-                        },
-                      },
-                    ],
-                  },
-                };
-                ws.send(JSON.stringify(toolResp));
-              }
+          if (msg.setupComplete) {
+            didReachSetupComplete = true;
+            this.setupComplete = true;
+            callbacks.onStatusChange(
+              'connected',
+              `Gemini Live Native Audio 24kHz (${modelId} • Voz ${avatar.geminiConfig.voiceName})`
+            );
+            return;
+          }
+
+          const pending = this.pendingLiveTurn;
+          if (!pending) return;
+
+          // Transcrição oficial sincronizada do áudio nativo (outputAudioTranscription)
+          const transcriptionChunk = msg.serverContent?.outputTranscription?.text;
+          if (typeof transcriptionChunk === 'string' && transcriptionChunk.length > 0) {
+            const cleanChunk = transcriptionChunk.replace(/<ctrl\d+>/gi, '');
+            if (cleanChunk) {
+              pending.transcript += cleanChunk;
             }
           }
 
           const parts = msg.serverContent?.modelTurn?.parts;
           if (Array.isArray(parts)) {
             for (const part of parts) {
-              if (part.text) {
-                accumulatedText += part.text;
-                const check = evaluateRealtimeGuardrails(
-                  accumulatedText,
-                  'avatar_output',
-                  avatar
-                );
-                if (!check.allowed && avatar.guardrails.autoCutAudioOnViolation) {
-                  audioEngine.interrupt();
-                  callbacks.onGuardrailCut(check.ruleTriggered, check.sanitizedText);
-                  accumulatedText = '';
-                  return;
+              if (!part?.thought && typeof part?.text === 'string' && part.text.trim()) {
+                const cleanPart = part.text.replace(/<ctrl\d+>/gi, '');
+                if (cleanPart) {
+                  pending.fallbackText += cleanPart;
                 }
               }
-              if (part.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData.data) {
-                audioEngine.enqueuePcm24kBase64(part.inlineData.data);
+
+              if (part?.inlineData?.mimeType?.startsWith('audio/pcm') && part.inlineData.data) {
+                const pcmChunk = String(part.inlineData.data);
+                if (!pending.hasReceivedAudio) {
+                  pending.hasReceivedAudio = true;
+                  clearTimeout(pending.firstChunkTimer);
+                }
+                pending.pcmChunks.push(pcmChunk);
+                pending.audioEngine.enqueuePcm24kBase64(
+                  pcmChunk,
+                  undefined,
+                  pending.pcmChunks.length === 1 ? pending.onAudioStart : undefined
+                );
               }
             }
           }
 
-          if (msg.serverContent?.turnComplete) {
-            if (accumulatedText.trim()) {
-              const cleanTurn = formatNaturalSpokenReply(
-                accumulatedText.trim(),
-                avatar.guardrails.maxResponseSentences || 2
-              );
-              callbacks.onModelTurnComplete(cleanTurn, activeCitations);
+          // Guardrail em tempo real sobre a transcrição acumulada
+          const currentSpokenText = (pending.transcript || pending.fallbackText).trim();
+          if (currentSpokenText && !pending.wasBlocked) {
+            const check = evaluateRealtimeGuardrails(
+              currentSpokenText,
+              'avatar_output',
+              pending.avatar
+            );
+            if (!check.allowed && pending.avatar.guardrails.autoCutAudioOnViolation) {
+              pending.wasBlocked = true;
+              pending.blockedReply = check.sanitizedText;
+              pending.audioEngine.interrupt();
+              callbacks.onGuardrailCut(check.ruleTriggered, check.sanitizedText);
             }
-            accumulatedText = '';
-            activeCitations = [];
+          }
+
+          if (msg.serverContent?.turnComplete) {
+            this.finalizePendingLiveTurn();
           }
         } catch {
           // Ignore malformed chunk
@@ -1034,23 +1298,243 @@ export class GeminiLiveSessionManager {
       };
 
       ws.onerror = () => {
+        if (attemptToken !== this.connectionAttemptId) return;
         this.isConnected = false;
-        callbacks.onStatusChange(
-          'fallback_ready',
-          `Gemini Neural TTS Ativo (Voz ${avatar.geminiConfig.voiceName})`
-        );
+        this.setupComplete = false;
+        if (this.pendingLiveTurn && !this.pendingLiveTurn.hasReceivedAudio) {
+          this.abortPendingLiveTurn(null);
+        } else if (this.pendingLiveTurn) {
+          this.finalizePendingLiveTurn();
+        }
       };
 
       ws.onclose = () => {
+        if (attemptToken !== this.connectionAttemptId) return;
         this.isConnected = false;
+        this.setupComplete = false;
+
+        if (this.pendingLiveTurn && !this.pendingLiveTurn.hasReceivedAudio) {
+          this.abortPendingLiveTurn(null);
+        } else if (this.pendingLiveTurn) {
+          this.finalizePendingLiveTurn();
+        }
+
+        // Se fechou antes de concluir o setup, tenta automaticamente o próximo modelo Live Native Audio (ex: 09-2025)
+        if (!didReachSetupComplete && candidateIndex + 1 < candidates.length) {
+          this.openLiveSocketCandidate(
+            candidates,
+            candidateIndex + 1,
+            attemptToken,
+            avatar,
+            documents,
+            audioEngine,
+            callbacks
+          );
+          return;
+        }
+
+        callbacks.onStatusChange(
+          'fallback_ready',
+          `Gemini Neural TTS 24kHz Ativo (Voz ${avatar.geminiConfig.voiceName})`
+        );
       };
     } catch {
       this.isConnected = false;
+      this.setupComplete = false;
       callbacks.onStatusChange(
         'fallback_ready',
         `Voz Ativa (${avatar.geminiConfig.voiceName})`
       );
     }
+  }
+
+  private finalizePendingLiveTurn() {
+    const pending = this.pendingLiveTurn;
+    if (!pending) return;
+    this.pendingLiveTurn = null;
+    clearTimeout(pending.firstChunkTimer);
+    clearTimeout(pending.totalTimer);
+
+    if (!pending.hasReceivedAudio && !pending.wasBlocked) {
+      pending.resolve(null);
+      return;
+    }
+
+    const rawTranscript = (pending.transcript || pending.fallbackText)
+      .replace(/<ctrl\d+>/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const finalText = pending.wasBlocked
+      ? pending.blockedReply
+      : rawTranscript
+      ? formatNaturalSpokenReply(rawTranscript, Math.max(4, pending.maxSentences + 1))
+      : 'Resposta entregue por voz ao vivo pelo Gemini Live Native Audio.';
+
+    // Salva o áudio nativo recém-gerado no cache do motor para replay instantâneo no histórico
+    if (!pending.wasBlocked && pending.pcmChunks.length > 0 && rawTranscript) {
+      const mergedPcm = concatBase64PcmChunks(pending.pcmChunks);
+      if (mergedPcm) {
+        const persona = (
+          pending.avatar.geminiConfig.voiceName in VOICE_PERSONA_SPECS
+            ? pending.avatar.geminiConfig.voiceName
+            : 'Aoede'
+        ) as VoicePersonaName;
+        pending.audioEngine.cachePcmAudio(finalText, persona, mergedPcm);
+      }
+    }
+
+    if (pending.onAudioComplete) {
+      if (pending.audioEngine.getIsSpeaking()) {
+        pending.audioEngine.setStreamDrainCallback(pending.onAudioComplete);
+      } else {
+        pending.onAudioComplete();
+      }
+    }
+
+    const { emotion, gesture } = inferEmotionAndGesture(
+      finalText,
+      pending.wasBlocked,
+      pending.citations.length > 0
+    );
+
+    pending.resolve({
+      replyText: finalText,
+      citations: pending.citations,
+      emotion,
+      gesture,
+      wasBlocked: pending.wasBlocked,
+      latencyMs: Math.round(performance.now() - pending.t0),
+      modeUsed: 'gemini_live_ws',
+      audioAlreadyPlayed: !pending.wasBlocked && pending.hasReceivedAudio,
+    });
+  }
+
+  private sendLiveNativeAudioTurn(params: {
+    userText: string;
+    avatar: AvatarProfile;
+    citations: RagCitation[];
+    sessionProfile?: ConversationUserProfile;
+    visionFrameBase64?: string | null;
+    audioEngine: RealtimeAudioVisemeEngine;
+    maxSentences: number;
+    t0: number;
+    onAudioStart?: () => void;
+    onAudioComplete?: () => void;
+  }): Promise<{
+    replyText: string;
+    citations: RagCitation[];
+    emotion: EmotionState;
+    gesture: GestureState;
+    wasBlocked: boolean;
+    latencyMs: number;
+    modeUsed: 'gemini_live_ws';
+    audioAlreadyPlayed: boolean;
+  } | null> {
+    if (!this.isLiveWsConnected() || !this.ws) {
+      return Promise.resolve(null);
+    }
+
+    // Interrompe eventual áudio ou turno anterior
+    params.audioEngine.interrupt();
+    this.abortPendingLiveTurn(null);
+
+    const contextHints: string[] = [];
+    if (params.sessionProfile?.userName) {
+      contextHints.push(
+        `Nome da pessoa: ${params.sessionProfile.userName} (chame-a pelo nome naturalmente).`
+      );
+    } else {
+      contextHints.push(
+        `Nome ainda não informado (se couber naturalmente, pergunte como ela prefere ser chamada).`
+      );
+    }
+    const profileTags = [
+      params.sessionProfile?.academicStage,
+      params.sessionProfile?.courseOrArea,
+      params.sessionProfile?.campusOrUnit,
+    ].filter(Boolean);
+    if (profileTags.length > 0) {
+      contextHints.push(`Perfil detectado: ${profileTags.join(' • ')}.`);
+    }
+    const latestThought =
+      params.sessionProfile?.thoughtChain?.[params.sessionProfile.thoughtChain.length - 1];
+    if (latestThought) {
+      contextHints.push(`Estratégia interna silenciosa: ${latestThought.responseStrategy}.`);
+    }
+    if (params.citations.length > 0) {
+      contextHints.push(
+        `Fatos relevantes da sua memória para responder com precisão (incorpore naturalmente sem citar documentos): ${params.citations
+          .slice(0, 3)
+          .map((c) => c.excerpt.slice(0, 320))
+          .join(' | ')}`
+      );
+    }
+
+    const combinedTurnText =
+      contextHints.length > 0
+        ? `[CONTEXTO SILENCIOSO — NÃO LEIA EM VOZ ALTA: ${contextHints.join(' ')}]\n\nFala do usuário: ${params.userText}`
+        : params.userText;
+
+    const parts: Array<Record<string, unknown>> = [{ text: combinedTurnText }];
+    if (params.visionFrameBase64) {
+      parts.push({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: params.visionFrameBase64.replace(/^data:image\/\w+;base64,/, ''),
+        },
+      });
+    }
+
+    return new Promise((resolve) => {
+      const firstChunkTimer = setTimeout(() => {
+        if (this.pendingLiveTurn && !this.pendingLiveTurn.hasReceivedAudio) {
+          this.abortPendingLiveTurn(null);
+        }
+      }, 5500);
+
+      const totalTimer = setTimeout(() => {
+        if (this.pendingLiveTurn) {
+          if (this.pendingLiveTurn.hasReceivedAudio) {
+            this.finalizePendingLiveTurn();
+          } else {
+            this.abortPendingLiveTurn(null);
+          }
+        }
+      }, 22000);
+
+      this.pendingLiveTurn = {
+        avatar: params.avatar,
+        audioEngine: params.audioEngine,
+        citations: params.citations,
+        maxSentences: params.maxSentences,
+        t0: params.t0,
+        transcript: '',
+        fallbackText: '',
+        pcmChunks: [],
+        hasReceivedAudio: false,
+        wasBlocked: false,
+        blockedReply: '',
+        onAudioStart: params.onAudioStart,
+        onAudioComplete: params.onAudioComplete,
+        firstChunkTimer,
+        totalTimer,
+        resolve,
+      };
+
+      try {
+        this.ws?.send(
+          JSON.stringify({
+            clientContent: {
+              turns: [{ role: 'user', parts }],
+              turnComplete: true,
+            },
+          })
+        );
+      } catch {
+        this.abortPendingLiveTurn(null);
+      }
+    });
   }
 
   public sendRealtimeVideoFrame(base64JpegNoPrefix: string) {
@@ -1080,6 +1564,9 @@ export class GeminiLiveSessionManager {
     sessionProfile?: ConversationUserProfile;
     justLearnedName?: boolean;
     isPureNameIntroduction?: boolean;
+    audioEngine?: RealtimeAudioVisemeEngine;
+    onAudioStart?: () => void;
+    onAudioComplete?: () => void;
   }): Promise<{
     replyText: string;
     citations: RagCitation[];
@@ -1088,6 +1575,7 @@ export class GeminiLiveSessionManager {
     wasBlocked: boolean;
     latencyMs: number;
     modeUsed: 'gemini_live_ws' | 'gemini_rest' | 'sandbox_neural';
+    audioAlreadyPlayed?: boolean;
   }> {
     const t0 = performance.now();
     const {
@@ -1101,6 +1589,9 @@ export class GeminiLiveSessionManager {
       sessionProfile,
       justLearnedName = false,
       isPureNameIntroduction = false,
+      audioEngine,
+      onAudioStart,
+      onAudioComplete,
     } = params;
 
     const inputGuard = evaluateRealtimeGuardrails(userText, 'user_input', avatar);
@@ -1130,6 +1621,43 @@ export class GeminiLiveSessionManager {
       validHistory
     );
 
+    // Em crises agudas (ideação suicida/autolesão) ou emergências médicas, mantemos o caminho determinístico com canais 188/192 garantidos
+    const normInput = inputGuard.sanitizedText
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const isAcuteEmergency =
+      /\b(?:suicid\w*|me matar|tirar a propria vida|autoles\w*|dor testicular subita|retencao urinaria aguda|parada subita de urinar|sinais de avc)\b/.test(
+        normInput
+      );
+
+    // CAMADA 1 (PRINCIPAL): Gemini Live Native Audio Dialog (gemini-2.5-flash-native-audio-preview)
+    // Modelo especializado em diálogo ao vivo que pensa e gera a voz 24kHz nativa em streaming em 1 única rodada!
+    if (
+      this.apiKey &&
+      this.isLiveWsConnected() &&
+      audioEngine &&
+      !audioEngine.isMuted() &&
+      !isAcuteEmergency
+    ) {
+      const liveResult = await this.sendLiveNativeAudioTurn({
+        userText: inputGuard.sanitizedText,
+        avatar,
+        citations,
+        sessionProfile,
+        visionFrameBase64,
+        audioEngine,
+        maxSentences,
+        t0,
+        onAudioStart,
+        onAudioComplete,
+      });
+      if (liveResult) {
+        return liveResult;
+      }
+    }
+
+    // CAMADA 2: Gemini 2.5 Flash REST + Síntese Neural Gemini TTS 24kHz (com normalização fonética e direção conversacional)
     if (this.apiKey) {
       // Constrói histórico completo da conversa até o momento (sem tags artificiais) para continuidade natural estilo Gemini Live / GPT Live
       const historyContents: Array<{

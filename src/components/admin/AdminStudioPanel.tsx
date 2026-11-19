@@ -1818,11 +1818,17 @@ export const AdminStudioPanel: React.FC<Props> = ({
                     })
                   }
                 >
-                  <option value="gemini-2.0-flash-exp">
-                    gemini-2.0-flash-exp (BidiGenerateContent WebSocket + Visão + Tools)
+                  <option value="gemini-2.5-flash-native-audio-preview-12-2025">
+                    gemini-2.5-flash-native-audio-preview-12-2025 (Gemini Live • Áudio Nativo Dialogal 24kHz)
+                  </option>
+                  <option value="gemini-2.5-flash-native-audio-preview-09-2025">
+                    gemini-2.5-flash-native-audio-preview-09-2025 (Gemini Live • Áudio Nativo Estável)
                   </option>
                   <option value="gemini-2.5-flash-preview-native-audio-dialog">
-                    gemini-2.5-flash-preview-native-audio-dialog (Áudio Nativo Expressivo)
+                    gemini-2.5-flash-preview-native-audio-dialog (Diálogo Áudio Nativo)
+                  </option>
+                  <option value="gemini-2.0-flash-exp">
+                    gemini-2.0-flash-exp (Legado)
                   </option>
                 </select>
               </label>

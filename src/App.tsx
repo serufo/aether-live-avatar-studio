@@ -105,14 +105,24 @@ export function App() {
         if (Array.isArray(parsed.avatars) && parsed.avatars.length > 0) {
           const defaultSamia = DEFAULT_AVATARS.find((d) => d.id === 'avatar-samia-photo');
           const savedList = (parsed.avatars as AvatarProfile[]).map((a) => {
+            let next = a;
             if (
-              a.id === 'avatar-samia-photo' &&
+              next.id === 'avatar-samia-photo' &&
               defaultSamia &&
-              PREVIOUS_SAMIA_DEFAULT_GREETINGS.has(a.greetingMessage)
+              PREVIOUS_SAMIA_DEFAULT_GREETINGS.has(next.greetingMessage)
             ) {
-              return { ...a, greetingMessage: defaultSamia.greetingMessage };
+              next = { ...next, greetingMessage: defaultSamia.greetingMessage };
             }
-            return a;
+            if (next.geminiConfig?.model === 'gemini-2.0-flash-exp') {
+              next = {
+                ...next,
+                geminiConfig: {
+                  ...next.geminiConfig,
+                  model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+                },
+              };
+            }
+            return next;
           });
           const savedIds = new Set(savedList.map((a) => a.id));
           const missingDefaults = DEFAULT_AVATARS.filter((d) => !savedIds.has(d.id));
@@ -612,6 +622,19 @@ export function App() {
     setGesture('nod');
 
     try {
+      const handleLiveAudioFinished = () => {
+        setEmotion('neutral');
+        setGesture('idle');
+        // Modo Live Contínuo (estilo GPT Live / Gemini Live): volta a escutar automaticamente após o avatar concluir a fala
+        if (liveVoiceModeRef.current) {
+          setTimeout(() => {
+            if (liveVoiceModeRef.current && !audioEngineRef.current?.getIsSpeaking()) {
+              startLiveMicSession();
+            }
+          }, 260);
+        }
+      };
+
       const result = await manager.processConversationTurn({
         userText: rawText,
         avatar: activeAvatar,
@@ -623,6 +646,13 @@ export function App() {
         sessionProfile: nextProfile,
         justLearnedName,
         isPureNameIntroduction,
+        audioEngine: audio,
+        onAudioStart: () => {
+          setIsProcessing(false);
+          setEmotion('happy');
+          setGesture('explain');
+        },
+        onAudioComplete: handleLiveAudioFinished,
       });
 
       if (activeAvatar.guardrails.enableSemanticJudge) {
@@ -671,26 +701,22 @@ export function App() {
         setTurns((prev) => [...prev, avatarTurn]);
       };
 
-      await audio.speakWithVisemes(
-        result.replyText,
-        activeAvatar.geminiConfig.voiceName,
-        () => {
-          commitTurnOnAudioStart();
-          setEmotion('neutral');
-          setGesture('idle');
-          // Modo Live Contínuo (estilo GPT Live / Gemini Live): volta a escutar automaticamente após o avatar concluir a fala
-          if (liveVoiceModeRef.current) {
-            setTimeout(() => {
-              if (liveVoiceModeRef.current && !audioEngineRef.current?.getIsSpeaking()) {
-                startLiveMicSession();
-              }
-            }, 260);
+      // Se o Gemini Live Native Audio já entregou a fala nativa em streaming 24kHz, apenas registra o turno sem repetir TTS
+      if (result.audioAlreadyPlayed) {
+        commitTurnOnAudioStart();
+      } else {
+        await audio.speakWithVisemes(
+          result.replyText,
+          activeAvatar.geminiConfig.voiceName,
+          () => {
+            commitTurnOnAudioStart();
+            handleLiveAudioFinished();
+          },
+          () => {
+            commitTurnOnAudioStart();
           }
-        },
-        () => {
-          commitTurnOnAudioStart();
-        }
-      );
+        );
+      }
     } finally {
       setIsProcessing(false);
     }
