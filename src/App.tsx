@@ -45,6 +45,10 @@ import {
   Activity,
   MessageSquare,
   X,
+  ChevronUp,
+  ChevronDown,
+  Captions,
+  RotateCcw,
 } from 'lucide-react';
 
 type ScreenMode = 'live_stage' | 'admin_config';
@@ -146,6 +150,9 @@ export function App() {
   // Separação clara entre Palco Ao Vivo (padrão, limpo) e Ambiente de Administração
   const [screenMode, setScreenMode] = useState<ScreenMode>('live_stage');
   const [showTranscript, setShowTranscript] = useState<boolean>(false);
+  const [showDockOptions, setShowDockOptions] = useState<boolean>(false);
+  const [showSubtitles, setShowSubtitles] = useState<boolean>(true);
+  const [replayingTurnId, setReplayingTurnId] = useState<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   // Estado Conversacional & Expressões do Avatar em Tempo Real
@@ -638,8 +645,43 @@ export function App() {
     }
   };
 
+  const handleReplayTurnAudio = (turn: ConversationTurn) => {
+    const audio = audioEngineRef.current;
+    if (!audio || !turn.text.trim()) return;
+
+    audio.initAudioContext();
+
+    // Se clicar no mesmo trecho que já está sendo reproduzido, interrompe
+    if (replayingTurnId === turn.id && isSpeaking) {
+      audio.interrupt();
+      setReplayingTurnId(null);
+      setIsSpeaking(false);
+      setEmotion('neutral');
+      setGesture('idle');
+      return;
+    }
+
+    setReplayingTurnId(turn.id);
+    if (turn.emotion) setEmotion(turn.emotion);
+    if (turn.gesture) setGesture(turn.gesture);
+
+    void audio.speakWithVisemes(
+      turn.text,
+      activeAvatar.geminiConfig.voiceName,
+      () => {
+        setReplayingTurnId((prev) => (prev === turn.id ? null : prev));
+        setEmotion('neutral');
+        setGesture('idle');
+      },
+      () => {
+        setReplayingTurnId(turn.id);
+      }
+    );
+  };
+
   const handleSelectAvatar = (id: string) => {
     audioEngineRef.current?.interrupt();
+    setReplayingTurnId(null);
     setActiveAvatarId(id);
     const chosen = avatars.find((a) => a.id === id);
     if (chosen) {
@@ -799,20 +841,57 @@ export function App() {
             </div>
           )}
 
-          {/* Painel Flutuante de Texto das Conversas (quando ativado pelo botão na barra) */}
+          {/* Legenda Ao Vivo da Fala (Closed Captions / CC) acima da barra inferior */}
+          {showSubtitles && !showTranscript && turns.length > 0 && (
+            <div
+              id="stage-live-subtitles"
+              className={`clean-subtitle-caption ${
+                turns[turns.length - 1].emotion === 'alert' ? 'caption-alert' : ''
+              }`}
+              style={{
+                bottom: showDockOptions ? '168px' : '78px',
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+              }}
+              onClick={() => handleReplayTurnAudio(turns[turns.length - 1])}
+              title="Toque na legenda para ouvir este trecho novamente"
+            >
+              <span className="caption-speaker">
+                {turns[turns.length - 1].speaker === 'user'
+                  ? 'Você: '
+                  : `${activeAvatar.name}: `}
+              </span>
+              <span>{turns[turns.length - 1].text}</span>
+              <span
+                style={{
+                  marginLeft: '8px',
+                  fontSize: '0.7rem',
+                  color: '#00f0ff',
+                  opacity: 0.85,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                }}
+              >
+                <Volume2 size={12} />
+              </span>
+            </div>
+          )}
+
+          {/* Painel Flutuante de Texto das Conversas (clique em qualquer trecho para reproduzir o áudio novamente) */}
           {showTranscript && (
             <div
               id="stage-transcript-panel"
               style={{
                 position: 'absolute',
-                bottom: '76px',
+                bottom: showDockOptions ? '170px' : '80px',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                width: 'min(680px, calc(100% - 32px))',
-                maxHeight: '42dvh',
+                width: 'min(680px, calc(100vw - 20px))',
+                maxHeight: '46dvh',
                 zIndex: 18,
-                background: 'rgba(11, 15, 25, 0.88)',
-                backdropFilter: 'blur(20px)',
+                background: 'rgba(11, 15, 25, 0.92)',
+                backdropFilter: 'blur(22px)',
                 border: '1px solid rgba(255, 255, 255, 0.14)',
                 borderRadius: '16px',
                 display: 'flex',
@@ -826,14 +905,15 @@ export function App() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 16px',
+                  padding: '10px 14px',
                   borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-                  fontSize: '0.75rem',
+                  fontSize: '0.74rem',
                   fontWeight: 600,
                   color: '#94a3b8',
+                  gap: '8px',
                 }}
               >
-                <span>HISTÓRICO DA CONVERSA ({turns.length})</span>
+                <span>HISTÓRICO ({turns.length}) • TOQUE NO TRECHO PARA OUVIR</span>
                 <button
                   type="button"
                   onClick={() => setShowTranscript(false)}
@@ -853,110 +933,129 @@ export function App() {
               </div>
               <div
                 style={{
-                  padding: '12px 16px',
+                  padding: '12px 14px',
                   overflowY: 'auto',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
                 }}
               >
-                {turns.map((turn) => (
-                  <div
-                    key={turn.id}
-                    style={{
-                      alignSelf: turn.speaker === 'user' ? 'flex-end' : 'flex-start',
-                      maxWidth: '85%',
-                      padding: '8px 13px',
-                      borderRadius:
-                        turn.speaker === 'user'
-                          ? '14px 14px 4px 14px'
-                          : '14px 14px 14px 4px',
-                      background:
-                        turn.speaker === 'user'
+                {turns.map((turn) => {
+                  const isReplayingThis = replayingTurnId === turn.id && isSpeaking;
+                  return (
+                    <div
+                      key={turn.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleReplayTurnAudio(turn)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleReplayTurnAudio(turn);
+                        }
+                      }}
+                      title="Clique para reproduzir o áudio deste trecho novamente"
+                      style={{
+                        alignSelf: turn.speaker === 'user' ? 'flex-end' : 'flex-start',
+                        maxWidth: '88%',
+                        padding: '9px 13px',
+                        borderRadius:
+                          turn.speaker === 'user'
+                            ? '14px 14px 4px 14px'
+                            : '14px 14px 14px 4px',
+                        background: isReplayingThis
+                          ? 'rgba(16, 185, 129, 0.22)'
+                          : turn.speaker === 'user'
                           ? 'rgba(0, 240, 255, 0.14)'
                           : turn.emotion === 'alert'
                           ? 'rgba(255, 59, 92, 0.18)'
-                          : 'rgba(255, 255, 255, 0.06)',
-                      border:
-                        turn.speaker === 'user'
+                          : 'rgba(255, 255, 255, 0.07)',
+                        border: isReplayingThis
+                          ? '1px solid #10b981'
+                          : turn.speaker === 'user'
                           ? '1px solid rgba(0, 240, 255, 0.32)'
                           : turn.emotion === 'alert'
                           ? '1px solid rgba(255, 59, 92, 0.4)'
-                          : '1px solid rgba(255, 255, 255, 0.1)',
-                      color: '#f8fafc',
-                      fontSize: '0.83rem',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '0.68rem',
-                        fontWeight: 600,
-                        marginBottom: '3px',
-                        color:
-                          turn.speaker === 'user'
-                            ? '#00f0ff'
-                            : turn.emotion === 'alert'
-                            ? '#ff3b5c'
-                            : '#10b981',
+                          : '1px solid rgba(255, 255, 255, 0.12)',
+                        color: '#f8fafc',
+                        fontSize: '0.83rem',
+                        lineHeight: 1.45,
+                        cursor: 'pointer',
+                        transition: 'all 0.16s ease',
                       }}
                     >
-                      {turn.speaker === 'user' ? 'Você' : activeAvatar.name}{' '}
-                      <span style={{ opacity: 0.6, fontWeight: 400 }}>{turn.timestamp}</span>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          marginBottom: '4px',
+                          color:
+                            turn.speaker === 'user'
+                              ? '#00f0ff'
+                              : turn.emotion === 'alert'
+                              ? '#ff3b5c'
+                              : '#10b981',
+                        }}
+                      >
+                        <span>
+                          {turn.speaker === 'user' ? 'Você' : activeAvatar.name}{' '}
+                          <span style={{ opacity: 0.6, fontWeight: 400 }}>{turn.timestamp}</span>
+                        </span>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: isReplayingThis ? '#10b981' : '#94a3b8',
+                            fontSize: '0.65rem',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {isReplayingThis ? (
+                            <>
+                              <Volume2 size={12} />
+                              <span>Falando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw size={11} />
+                              <span>Ouvir</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div>{turn.text}</div>
                     </div>
-                    <div>{turn.text}</div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div ref={transcriptEndRef} />
               </div>
             </div>
           )}
 
-          {/* Apenas a Barra Inferior Fluida de Interação */}
-          <div className="stage-bottom-hud-dock clean-dock">
-            <div className="hud-controls-cluster">
+          {/* Barra Inferior Responsiva em Duas Linhas com Expansor de Opções e Legendas nos Botões */}
+          <div
+            className={`stage-bottom-hud-dock clean-dock ${
+              showDockOptions ? 'dock-expanded' : 'dock-collapsed'
+            }`}
+          >
+            {/* LINHA 1 (Sempre visível e compacta para celular): Voz + Input + Enviar + Botão Opções */}
+            <div className="hud-primary-row">
               <button
                 type="button"
                 id="btn-toggle-mic"
-                className={`hud-round-btn ${isListeningMic ? 'mic-active' : ''}`}
+                className={`hud-labeled-btn ${isListeningMic ? 'mic-active' : ''}`}
                 onClick={toggleMicrophone}
-                title="Falar pelo Microfone em Tempo Real"
+                title="Ativar ou Desativar Conversa por Voz em Tempo Real"
               >
-                {isListeningMic ? <Mic size={18} /> : <MicOff size={18} />}
-              </button>
-
-              <button
-                type="button"
-                id="btn-toggle-camera"
-                className={`hud-round-btn ${cameraActive ? 'cam-active' : ''}`}
-                onClick={toggleCamera}
-                title="Compartilhar Câmera com o Avatar"
-              >
-                {cameraActive ? <Video size={18} /> : <VideoOff size={18} />}
-              </button>
-
-              <button
-                type="button"
-                id="btn-toggle-screen"
-                className={`hud-round-btn ${screenActive ? 'cam-active' : ''}`}
-                onClick={toggleScreenShare}
-                title="Compartilhar Tela com o Avatar"
-              >
-                <MonitorUp size={18} />
-              </button>
-
-              <button
-                type="button"
-                id="btn-toggle-mute"
-                className={`hud-round-btn ${isMuted ? 'muted-active' : ''}`}
-                onClick={() => {
-                  const next = !isMuted;
-                  setIsMuted(next);
-                  audioEngineRef.current?.setMuted(next);
-                }}
-                title={isMuted ? 'Ativar Som' : 'Silenciar'}
-              >
-                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                {isListeningMic ? <Mic size={16} /> : <MicOff size={16} />}
+                <span className="hud-btn-caption">
+                  {isListeningMic ? 'Ouvindo' : 'Voz'}
+                </span>
               </button>
 
               {isSpeaking && (
@@ -967,71 +1066,148 @@ export function App() {
                   onClick={() => {
                     audioEngineRef.current?.interrupt();
                     setIsSpeaking(false);
+                    setReplayingTurnId(null);
                     setGesture('idle');
                   }}
-                  title="Interromper Fala"
+                  title="Interromper Fala do Avatar"
                 >
-                  <Square size={13} />
+                  <Square size={12} />
                   <span>Parar</span>
                 </button>
               )}
+
+              <form
+                className="hud-prompt-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+              >
+                <input
+                  type="text"
+                  id="stage-chat-input"
+                  className="hud-prompt-input"
+                  placeholder={
+                    isListeningMic
+                      ? `Ouvindo ao vivo... Fale com ${activeAvatar.name}`
+                      : isProcessing
+                      ? `${activeAvatar.name} está respondendo...`
+                      : `Fale com ${activeAvatar.name}...`
+                  }
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  id="btn-send-message"
+                  className="hud-send-btn"
+                  disabled={isProcessing || !inputText.trim()}
+                  title="Enviar mensagem"
+                >
+                  <Send size={15} />
+                  <span>Enviar</span>
+                </button>
+              </form>
+
+              <button
+                type="button"
+                id="btn-toggle-dock-options"
+                className={`hud-labeled-btn ${showDockOptions ? 'cam-active' : ''}`}
+                onClick={() => setShowDockOptions((prev) => !prev)}
+                aria-expanded={showDockOptions}
+                title={
+                  showDockOptions
+                    ? 'Esconder opções adicionais'
+                    : 'Expandir opções (Legenda, Histórico, Câmera, Tela, Som, Config)'
+                }
+              >
+                {showDockOptions ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                <span className="hud-btn-caption">Opções</span>
+              </button>
             </div>
 
-            <form
-              className="hud-prompt-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-            >
-              <input
-                type="text"
-                id="stage-chat-input"
-                className="hud-prompt-input"
-                placeholder={
-                  isListeningMic
-                    ? `Ouvindo ao vivo... Fale com ${activeAvatar.name}`
-                    : isProcessing
-                    ? `${activeAvatar.name} está preparando a resposta...`
-                    : `Converse com ${activeAvatar.name}...`
-                }
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-              />
-              <button
-                type="submit"
-                id="btn-send-message"
-                className="hud-send-btn"
-                disabled={isProcessing || !inputText.trim()}
-              >
-                <Send size={16} />
-                <span>Enviar</span>
-              </button>
-            </form>
+            {/* LINHA 2 (Mostrada somente quando expandida pelo botão Opções): Botões com Legendas */}
+            {showDockOptions && (
+              <div className="hud-secondary-options-row" id="stage-dock-options-row">
+                <button
+                  type="button"
+                  id="btn-toggle-subtitles"
+                  className={`hud-option-pill ${showSubtitles ? 'cam-active' : ''}`}
+                  onClick={() => setShowSubtitles((prev) => !prev)}
+                  title={
+                    showSubtitles
+                      ? 'Desativar legenda em tempo real na tela'
+                      : 'Ativar legenda em tempo real na tela'
+                  }
+                >
+                  <Captions size={15} />
+                  <span>Legenda</span>
+                </button>
 
-            <button
-              type="button"
-              id="btn-toggle-transcript"
-              className={`hud-round-btn ${showTranscript ? 'cam-active' : ''}`}
-              onClick={() => setShowTranscript((prev) => !prev)}
-              title={
-                showTranscript
-                  ? 'Ocultar Texto das Conversas'
-                  : 'Mostrar Texto das Conversas'
-              }
-            >
-              <MessageSquare size={18} />
-            </button>
+                <button
+                  type="button"
+                  id="btn-toggle-transcript"
+                  className={`hud-option-pill ${showTranscript ? 'cam-active' : ''}`}
+                  onClick={() => setShowTranscript((prev) => !prev)}
+                  title={
+                    showTranscript
+                      ? 'Ocultar histórico de conversas'
+                      : 'Mostrar histórico de conversas (toque nos trechos para ouvir)'
+                  }
+                >
+                  <MessageSquare size={15} />
+                  <span>Histórico</span>
+                </button>
 
-            <button
-              type="button"
-              id="btn-open-admin-studio"
-              className="hud-round-btn"
-              onClick={() => setScreenMode('admin_config')}
-              title="Abrir Tela de Configuração (Admin)"
-            >
-              <Settings size={18} />
-            </button>
+                <button
+                  type="button"
+                  id="btn-toggle-mute"
+                  className={`hud-option-pill ${isMuted ? 'muted-active' : ''}`}
+                  onClick={() => {
+                    const next = !isMuted;
+                    setIsMuted(next);
+                    audioEngineRef.current?.setMuted(next);
+                  }}
+                  title={isMuted ? 'Ativar áudio do avatar' : 'Silenciar áudio do avatar'}
+                >
+                  {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                  <span>{isMuted ? 'Mudo' : 'Som'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-toggle-camera"
+                  className={`hud-option-pill ${cameraActive ? 'cam-active' : ''}`}
+                  onClick={toggleCamera}
+                  title="Compartilhar câmera com o avatar"
+                >
+                  {cameraActive ? <Video size={15} /> : <VideoOff size={15} />}
+                  <span>Câmera</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-toggle-screen"
+                  className={`hud-option-pill ${screenActive ? 'cam-active' : ''}`}
+                  onClick={toggleScreenShare}
+                  title="Compartilhar tela com o avatar"
+                >
+                  <MonitorUp size={15} />
+                  <span>Tela</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-open-admin-studio"
+                  className="hud-option-pill"
+                  onClick={() => setScreenMode('admin_config')}
+                  title="Abrir tela de configuração e estúdio"
+                >
+                  <Settings size={15} />
+                  <span>Config</span>
+                </button>
+              </div>
+            )}
           </div>
         </main>
       </div>
