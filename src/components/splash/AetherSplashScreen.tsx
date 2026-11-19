@@ -1,15 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { APP_DEV_VERSION_LABEL } from '../../config/version';
 
 interface AetherSplashScreenProps {
-  /** Disparado sincronamente dentro do gesto do usuário (ideal para desbloquear Web Audio) */
-  onBeginEnter?: () => void;
+  /** Pré-desbloqueia Web Audio caso o usuário interaja com a tela durante a splash */
+  onPreUnlockAudio?: () => void;
   /** Disparado ao concluir a transição suave de saída da splash */
   onEnter: () => void;
-  /** Rótulo da versão de desenvolvimento (padrão: dev v0) */
+  /** Duração total da splash em milissegundos (padrão: 4000ms) */
+  durationMs?: number;
+  /** Rótulo da versão de desenvolvimento (padrão: dev v1) */
   versionLabel?: string;
 }
+
+const EXIT_TRANSITION_MS = 460;
 
 const ETHER_MOTES = [
   { left: '14%', size: 3, delay: '0s', duration: '11s', opacity: 0.45 },
@@ -21,8 +24,9 @@ const ETHER_MOTES = [
 ];
 
 export const AetherSplashScreen: React.FC<AetherSplashScreenProps> = ({
-  onBeginEnter,
+  onPreUnlockAudio,
   onEnter,
+  durationMs = 4000,
   versionLabel = APP_DEV_VERSION_LABEL,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
@@ -32,33 +36,29 @@ export const AetherSplashScreen: React.FC<AetherSplashScreenProps> = ({
   const backdropSrc = `${baseUrl}splash/aether.jpeg`;
   const emblemSrc = `${baseUrl}splash/aether-emblem.png`;
 
-  const triggerEnter = useCallback(() => {
-    if (isExiting) return;
-    setIsExiting(true);
-    onBeginEnter?.();
-    window.setTimeout(() => {
-      onEnter();
-    }, 460);
-  }, [isExiting, onBeginEnter, onEnter]);
-
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.repeat) {
-        e.preventDefault();
-        triggerEnter();
-      }
+    const exitDelay = Math.max(0, durationMs - EXIT_TRANSITION_MS);
+    const fadeTimer = window.setTimeout(() => {
+      setIsExiting(true);
+    }, exitDelay);
+    const doneTimer = window.setTimeout(() => {
+      onEnter();
+    }, durationMs);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(doneTimer);
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [triggerEnter]);
+  }, [durationMs, onEnter]);
 
   return (
     <div
       id="aether-splash-screen"
       className={`aether-splash-root ${isExiting ? 'is-exiting' : ''}`}
-      role="dialog"
-      aria-modal="true"
+      role="status"
+      aria-live="polite"
       aria-labelledby="aether-splash-title"
+      onPointerDown={() => onPreUnlockAudio?.()}
     >
       {/* Camada 1: Horizonte celeste de Éter (aether.jpeg) emergindo da noite primordial */}
       <div className="aether-splash-backdrop" aria-hidden="true">
@@ -88,7 +88,7 @@ export const AetherSplashScreen: React.FC<AetherSplashScreenProps> = ({
         </div>
       </div>
 
-      {/* Camada 2: Centro editorial mitológico com emblema de Éter (aether-emblem.png) */}
+      {/* Camada 2: Centro minimalista com emblema de Éter e barra de progressão de 4s */}
       <div className="aether-splash-frame">
         <div className="aether-splash-top-meta" aria-hidden="true">
           <span className="aether-meta-origin">ÉREBO &amp; NIX</span>
@@ -121,25 +121,11 @@ export const AetherSplashScreen: React.FC<AetherSplashScreenProps> = ({
             AETHER
           </h1>
 
-          <p className="aether-splash-myth">
-            Filho primordial de Érebo e Nix, representa o céu superior e brilhante — a
-            essência pura e luminosa que os deuses respiravam acima do ar dos mortais.
-          </p>
-
-          <div className="aether-splash-actions">
-            <button
-              type="button"
-              id="btn-enter-aether"
-              className="aether-enter-btn"
-              onClick={triggerEnter}
-              disabled={isExiting}
-            >
-              <span>Entrar no Aether</span>
-              <ArrowRight size={17} strokeWidth={2} />
-            </button>
-            <span className="aether-enter-hint">
-              Toque para iniciar a experiência com áudio ao vivo
-            </span>
+          <div className="aether-splash-progress-track" aria-hidden="true">
+            <div
+              className="aether-splash-progress-fill"
+              style={{ animationDuration: `${durationMs}ms` }}
+            />
           </div>
         </main>
 

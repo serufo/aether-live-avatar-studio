@@ -448,12 +448,9 @@ export function App() {
     // Executa na entrada do palco (e quando a chave de API terminar de carregar se ainda não tiver falado)
   }, [showSplash, playInitialGreeting, isMuted]);
 
-  const handleBeginEnterFromSplash = useCallback(() => {
+  const handlePreUnlockAudioFromSplash = useCallback(() => {
     audioEngineRef.current?.initAudioContext();
-    if (!initialGreetingHandledRef.current && !isMuted) {
-      playInitialGreeting(true);
-    }
-  }, [isMuted, playInitialGreeting]);
+  }, []);
 
   const handleFinishEnterFromSplash = useCallback(() => {
     setShowSplash(false);
@@ -1063,8 +1060,9 @@ export function App() {
       <div className="clean-stage-shell">
         {showSplash && (
           <AetherSplashScreen
-            onBeginEnter={handleBeginEnterFromSplash}
+            onPreUnlockAudio={handlePreUnlockAudioFromSplash}
             onEnter={handleFinishEnterFromSplash}
+            durationMs={4000}
             versionLabel={APP_DEV_VERSION_LABEL}
           />
         )}

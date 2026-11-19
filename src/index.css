@@ -1768,75 +1768,25 @@ body,
   animation: aetherRevealUp 820ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.aether-splash-myth {
-  max-width: 560px;
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-style: italic;
-  font-size: clamp(1.08rem, 2.3vw, 1.34rem);
-  font-weight: 400;
-  line-height: 1.55;
-  color: #dce6f3;
-  text-shadow: 0 2px 18px rgba(4, 7, 16, 0.85);
+.aether-splash-progress-track {
+  width: min(210px, 56vw);
+  height: 2px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(244, 232, 198, 0.16);
+  overflow: hidden;
   animation: aetherRevealUp 840ms 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.aether-splash-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-top: 4px;
-  animation: aetherRevealUp 860ms 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.aether-enter-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-width: 224px;
-  height: 48px;
-  padding: 0 28px;
+.aether-splash-progress-fill {
+  width: 100%;
+  height: 100%;
   border-radius: 999px;
-  border: 1px solid rgba(251, 236, 194, 0.65);
-  background: linear-gradient(135deg, #f3dca4 0%, #d4ab5a 100%);
-  color: #070b14;
-  font-family: var(--font-sans);
-  font-size: 0.92rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  box-shadow:
-    0 14px 36px rgba(3, 6, 14, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  transition:
-    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 200ms ease,
-    box-shadow 200ms ease;
-}
-
-.aether-enter-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  filter: brightness(1.05);
-  box-shadow:
-    0 18px 42px rgba(3, 6, 14, 0.72),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.aether-enter-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.aether-enter-btn:focus-visible {
-  outline: 2px solid #f3dca4;
-  outline-offset: 3px;
-}
-
-.aether-enter-hint {
-  font-family: var(--font-sans);
-  font-size: 0.74rem;
-  color: rgba(203, 216, 235, 0.72);
-  letter-spacing: 0.02em;
+  background: linear-gradient(90deg, rgba(184, 220, 255, 0.72) 0%, #ecd08b 100%);
+  transform-origin: left center;
+  animation-name: aetherSplashProgress;
+  animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation-fill-mode: forwards;
 }
 
 .aether-splash-footer {
@@ -1951,10 +1901,19 @@ body,
   }
 }
 
+@keyframes aetherSplashProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (max-width: 600px) {
   .aether-splash-medallion {
-    width: 118px;
-    height: 118px;
+    width: 128px;
+    height: 128px;
   }
 
   .aether-orbit-outer {
@@ -1970,17 +1929,6 @@ body,
     letter-spacing: 0.24em;
   }
 
-  .aether-splash-myth {
-    max-width: 94%;
-    font-size: 1.04rem;
-    line-height: 1.48;
-  }
-
-  .aether-enter-btn {
-    width: min(260px, 100%);
-    height: 46px;
-  }
-
   .aether-footer-studio {
     font-size: 0.62rem;
     letter-spacing: 0.14em;
@@ -1989,21 +1937,16 @@ body,
 
 @media (max-height: 660px) {
   .aether-splash-medallion {
-    width: 96px;
-    height: 96px;
+    width: 108px;
+    height: 108px;
   }
 
   .aether-splash-content {
-    gap: 10px;
+    gap: 12px;
   }
 
   .aether-splash-title {
     font-size: clamp(2rem, 6vw, 3rem);
-  }
-
-  .aether-splash-myth {
-    font-size: 0.98rem;
-    line-height: 1.4;
   }
 }
 
@@ -2016,8 +1959,7 @@ body,
   .aether-splash-medallion,
   .aether-splash-epigraph,
   .aether-splash-title,
-  .aether-splash-myth,
-  .aether-splash-actions,
+  .aether-splash-progress-track,
   .aether-splash-footer {
     animation: none !important;
   }
